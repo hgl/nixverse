@@ -210,17 +210,15 @@ let
       system:
       let
         pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
+        nixverse = pkgs.callPackage (import ./package.nix { inherit self lib entities; }) { };
       in
-      lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs")
+      {
+        inherit nixverse;
+      }
+      // lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs")
     );
     nixosConfigurations = configs releaseGroups.nixos;
     darwinConfigurations = configs releaseGroups.darwin;
-    loadNode = name: lib.findFirst ({ node, ... }: node.name == name) null (extractNodes entities);
-    loadNodeGroup =
-      name:
-      lib.findFirst (entity: entity.group == name) null (
-        lib.concatMap (entity: if entity.group == "" then [ ] else [ entity ]) entities
-      );
   };
 in
 flakeSelf
