@@ -13,68 +13,71 @@ let
       "darwin-stable"
     ];
   };
-  allNodes' = self.lib.concatMapAttrsToList (_: loadNodes') releaseGroups;
-  toNodes =
-    nodes':
+  # an entity is either a node or a node group with module args
+  entities = self.lib.concatMapAttrsToList (_: loadEntities) releaseGroups;
+  extractNodes =
+    entities:
     lib.concatMap (
-      { node', nodeSelf }:
-      if node'.group == "" then
+      entity:
+      if entity.group == "" then
         [
           {
-            node = node';
-            inherit nodeSelf;
+            node =
+              entity.node
+              // lib.removeAttrs entity [
+                "node"
+                "moduleArgs"
+              ];
+            inherit (entity) moduleArgs;
           }
         ]
       else
         let
-          attrs = lib.removeAttrs node' [ "nodes" ];
+          attrs = lib.removeAttrs entity [
+            "nodes"
+            "moduleArgs"
+          ];
         in
         map (n: {
           node = n // attrs;
-          inherit nodeSelf;
-        }) node'.nodes
-    ) nodes';
-  loadNode' =
+          inherit (entity) moduleArgs;
+        }) entity.nodes
+    ) entities;
+  loadEntity =
     release: name:
     let
       base = "${flake}/nodes/${release}/${name}";
       releaseParts = lib.split "-" release;
       os = lib.elemAt releaseParts 0;
       channel = lib.elemAt releaseParts 2;
-      nodeSelf =
+      inputs' = lib.mapAttrs' (k: v: lib.nameValuePair (lib.removeSuffix "-${channel}" k) v) (
         let
-          inputs = lib.mapAttrs' (k: v: lib.nameValuePair (lib.removeSuffix "-${channel}" k) v) (
-            let
-              no-darwin = lib.removeAttrs flake.inputs [ "nixpkgs-stable-darwin" ];
-              ins =
-                if os == "darwin" then
-                  no-darwin
-                  // {
-                    nixpkgs-stable = flake.inputs.nixpkgs-stable-darwin;
-                  }
-                else
-                  no-darwin;
-            in
-            if channel == "stable" then lib.filterAttrs (k: v: !(lib.hasSuffix "-unstable" k)) ins else ins
-          );
+          no-darwin = lib.removeAttrs flake.inputs [ "nixpkgs-stable-darwin" ];
+          ins =
+            if os == "darwin" then
+              no-darwin
+              // {
+                nixpkgs-stable = flake.inputs.nixpkgs-stable-darwin;
+              }
+            else
+              no-darwin;
         in
-        {
-          inherit inputs;
-          inherit (flake) outPath;
-          lib = callArgs (importFile flake "lib") {
-            inherit inputs;
-            inherit (inputs.nixpkgs) lib;
-          };
-          modules = if os == "nixos" then flakeSelf.nixosModules else flakeSelf.darwinModules;
+        if channel == "stable" then lib.filterAttrs (k: v: !(lib.hasSuffix "-unstable" k)) ins else ins
+      );
+      moduleArgs = {
+        inherit inputs';
+        lib' = callArgs (importFile flake "lib") {
+          inherit inputs';
+          inherit (inputs'.nixpkgs) lib;
         };
-      node' =
+        modules' = if os == "nixos" then flakeSelf.nixosModules else flakeSelf.darwinModules;
+      };
+      entity =
         if lib.pathExists "${base}/default.nix" then
           let
             raw = callArgs (import base) {
-              inherit (nodeSelf.inputs.nixpkgs) lib;
-              self = {
-                inherit (nodeSelf) inputs lib;
-              };
+              inherit (moduleArgs.inputs'.nixpkgs) lib;
+              inherit (moduleArgs) inputs' lib';
             };
           in
           if lib.isAttrs raw then
@@ -82,10 +85,11 @@ let
               lib.abort "must not specify node name for a singleton node: ${base}/default.nix"
             else
               {
-                inherit name;
                 group = "";
+                node = {
+                  inherit name;
+                } // raw;
               }
-              // raw
           else if lib.isList raw then
             {
               group = name;
@@ -103,18 +107,23 @@ let
             lib.abort "must be a list of attrsets or an attrset: ${base}/default.nix"
         else
           {
-            inherit name;
             group = "";
+            node = {
+              inherit name;
+            };
           };
     in
-    {
-      node' = node' // {
-        inherit release os channel;
-        basePath = base;
-      };
-      inherit nodeSelf;
+    entity
+    // {
+      inherit
+        release
+        os
+        channel
+        moduleArgs
+        ;
+      basePath = base;
     };
-  loadNodes' =
+  loadEntities =
     releases:
     lib.concatMap (
       release:
@@ -129,12 +138,12 @@ let
           else
             [ ];
       in
-      map (name: loadNode' release name) names
+      map (name: loadEntity release name) names
     ) releases;
   configs =
     releases:
     self.lib.mapListToAttrs (
-      { node, nodeSelf }:
+      { node, moduleArgs }:
       let
         mkSystem =
           with flake.inputs;
@@ -145,48 +154,30 @@ let
             darwin-stable = nix-darwin-stable.lib.darwinSystem;
           }
           .${node.release};
-        system =
-          (import
-            "${node.basePath}/${
-              lib.optionalString (node.group != "") "${node.name}/"
-            }hardware-configuration.nix"
-            {
-              config = null;
-              pkgs = null;
-              modulesPath = null;
-              inherit (nodeSelf.inputs.nixpkgs) lib;
-            }
-          ).nixpkgs.hostPlatform.content;
       in
       lib.nameValuePair node.name (mkSystem {
         specialArgs = {
-          inherit node;
-          self = nodeSelf // {
-            packages = flakeSelf.packages.${system};
-          };
-        };
+          node' = node;
+        } // moduleArgs;
         modules = [
           (
-            { config, ... }:
+            { config, pkgs, ... }:
             {
-              _module.args = lib.optionalAttrs (node.channel == "stable" && flake.inputs ? nixpkgs-unstable) {
-                pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform};
-              };
+              _module.args =
+                {
+                  pkgs' = lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs");
+                }
+                // lib.optionalAttrs (node.channel == "stable" && flake.inputs ? nixpkgs-unstable) {
+                  pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform};
+                };
               networking.hostName = lib.mkDefault node.name;
             }
           )
           "${node.basePath}/configuration.nix"
         ];
       })
-    ) (toNodes (loadNodes' releases));
-  importFile =
-    base: name:
-    if lib.pathExists "${base}/${name}.nix" then
-      import "${base}/${name}.nix"
-    else if lib.pathExists "${base}/${name}/default.nix" then
-      import "${base}/${name}"
-    else
-      null;
+    ) (extractNodes (loadEntities releases));
+  importFile = base: name: (importDir base).${name} or null;
   importDir =
     base:
     if lib.pathExists base then
@@ -220,26 +211,15 @@ let
       let
         pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
       in
-      lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/packages")
+      lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs")
     );
     nixosConfigurations = configs releaseGroups.nixos;
     darwinConfigurations = configs releaseGroups.darwin;
-    loadNode = name: lib.findFirst ({ node, ... }: node.name == name) null (toNodes allNodes');
+    loadNode = name: lib.findFirst ({ node, ... }: node.name == name) null (extractNodes entities);
     loadNodeGroup =
       name:
-      lib.findFirst ({ node, ... }: node.group == name) null (
-        lib.concatMap (
-          { node', nodeSelf }:
-          if node'.group == "" then
-            [ ]
-          else
-            [
-              {
-                node = node';
-                inherit nodeSelf;
-              }
-            ]
-        ) allNodes'
+      lib.findFirst (entity: entity.group == name) null (
+        lib.concatMap (entity: if entity.group == "" then [ ] else [ entity ]) entities
       );
   };
 in
