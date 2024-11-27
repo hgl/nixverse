@@ -11,8 +11,11 @@
     {
       load = import ./load.nix {
         inherit lib self;
+        lib' = self.lib;
       };
-      lib = import ./lib.nix lib;
-      forAllSystems = lib.genAttrs lib.systems.flakeExposed;
+      lib = import ./lib.nix {
+        inherit lib;
+        lib' = self.lib;
+      };
     };
 }

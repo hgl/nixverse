@@ -16,10 +16,16 @@ writeShellApplication {
       builtins.toJSON (
         map (
           entity:
-          self.lib.filterRecursive (_: v: !(lib.isFunction v)) (lib.removeAttrs entity [ "moduleArgs" ])
+          self.lib.filterRecursive (_: v: !(lib.isFunction v)) (
+            lib.removeAttrs entity [
+              "inputs"
+              "lib"
+              "modules"
+            ]
+          )
         ) entities
       )
     );
   };
-  text = builtins.readFile ./nixverse.bash;
+  text = lib.readFile ./nixverse.bash;
 }

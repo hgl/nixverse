@@ -1,8 +1,10 @@
-{ lib, self }:
+{
+  lib,
+  lib',
+  self,
+}:
 flake:
 let
-  callArgs =
-    f: args: if lib.isFunction f then f (lib.intersectAttrs (lib.functionArgs f) args) else f;
   releaseGroups = {
     nixos = [
       "nixos-unstable"
@@ -14,71 +16,84 @@ let
     ];
   };
   # an entity is either a node or a node group with module args
-  entities = self.lib.concatMapAttrsToList (_: loadEntities) releaseGroups;
-  extractNodes =
+  entities = lib'.concatMapAttrsToList (_: loadEntities) releaseGroups;
+  toModuleArgSet =
     entities:
     lib.concatMap (
       entity:
+      let
+        extraArgNames = [
+          "inputs"
+          "lib"
+          "modules"
+        ];
+        extraArgs = lib'.mapListToAttrs (name: lib.nameValuePair "${name}'" entity.${name}) extraArgNames;
+      in
       if entity.group == "" then
         [
-          {
-            node =
-              entity.node
-              // lib.removeAttrs entity [
-                "node"
-                "moduleArgs"
-              ];
-            inherit (entity) moduleArgs;
-          }
+          (
+            {
+              node' =
+                entity.node
+                // lib.removeAttrs entity (
+                  [
+                    "node"
+                  ]
+                  ++ extraArgNames
+                );
+            }
+            // extraArgs
+          )
         ]
       else
         let
-          attrs = lib.removeAttrs entity [
-            "nodes"
-            "moduleArgs"
-          ];
+          attrs = lib.removeAttrs entity (
+            [
+              "nodes"
+            ]
+            ++ extraArgNames
+          );
         in
-        map (n: {
-          node = n // attrs;
-          inherit (entity) moduleArgs;
-        }) entity.nodes
+        map (
+          n:
+          {
+            node' = n // attrs;
+          }
+          // extraArgs
+        ) entity.nodes
     ) entities;
   loadEntity =
     release: name:
     let
-      base = "${flake}/nodes/${release}/${name}";
       releaseParts = lib.split "-" release;
       os = lib.elemAt releaseParts 0;
       channel = lib.elemAt releaseParts 2;
-      inputs' = lib.mapAttrs' (k: v: lib.nameValuePair (lib.removeSuffix "-${channel}" k) v) (
+      base = "${flake}/nodes/${release}/${name}";
+      inputs = lib.mapAttrs' (k: v: lib.nameValuePair (lib.removeSuffix "-${channel}" k) v) (
         let
-          no-darwin = lib.removeAttrs flake.inputs [ "nixpkgs-stable-darwin" ];
           ins =
-            if os == "darwin" then
-              no-darwin
-              // {
-                nixpkgs-stable = flake.inputs.nixpkgs-stable-darwin;
-              }
-            else
-              no-darwin;
+            lib.removeAttrs flake.inputs [ "nixpkgs-stable-darwin" ]
+            // lib.optionalAttrs (os == "darwin") {
+              nixpkgs-stable = flake.inputs.nixpkgs-stable-darwin;
+            };
         in
         if channel == "stable" then lib.filterAttrs (k: v: !(lib.hasSuffix "-unstable" k)) ins else ins
       );
-      moduleArgs = {
-        inherit inputs';
-        lib' = callArgs (importFile flake "lib") {
-          inherit inputs';
-          inherit (inputs'.nixpkgs) lib;
-        };
-        modules' = if os == "nixos" then flakeSelf.nixosModules else flakeSelf.darwinModules;
+      flakeLib = importFile flake "lib";
+      entityLib = importFile base "lib";
+      finalLib =
+        lib'.callWithOptionalArgs flakeLib libArgs
+        // lib.optionalAttrs (entityLib != null) (lib'.callWithOptionalArgs entityLib libArgs);
+      libArgs = {
+        inherit (inputs.nixpkgs) lib;
+        inputs' = inputs;
+        lib' = finalLib;
       };
-      entity =
+      modules = if os == "nixos" then flakeSelf.nixosModules else flakeSelf.darwinModules;
+      imported =
         if lib.pathExists "${base}/default.nix" then
           let
-            raw = callArgs (import base) {
-              inherit (moduleArgs.inputs'.nixpkgs) lib;
-              inherit (moduleArgs) inputs' lib';
-            };
+            raw = lib'.callWithOptionalArgs (import base) libArgs;
           in
           if lib.isAttrs raw then
             if raw ? name then
@@ -112,17 +127,19 @@ let
               inherit name;
             };
           };
+      entity = imported // {
+        inherit
+          release
+          os
+          channel
+          inputs
+          modules
+          ;
+        basePath = base;
+        lib = finalLib;
+      };
     in
-    entity
-    // {
-      inherit
-        release
-        os
-        channel
-        moduleArgs
-        ;
-      basePath = base;
-    };
+    entity;
   loadEntities =
     releases:
     lib.concatMap (
@@ -131,7 +148,7 @@ let
         base = "${flake}/nodes/${release}";
         names =
           if lib.pathExists base then
-            self.lib.concatMapAttrsToList (
+            lib'.concatMapAttrsToList (
               name: v:
               if v == "directory" && lib.pathExists "${base}/${name}/configuration.nix" then [ name ] else [ ]
             ) (builtins.readDir base)
@@ -142,23 +159,20 @@ let
     ) releases;
   configs =
     releases:
-    self.lib.mapListToAttrs (
-      { node, moduleArgs }:
+    lib'.mapListToAttrs (
+      moduleArgs:
       let
         mkSystem =
-          with flake.inputs;
+          with moduleArgs.inputs';
           {
-            nixos-unstable = nixpkgs-unstable.lib.nixosSystem;
-            nixos-stable = nixpkgs-stable.lib.nixosSystem;
-            darwin-unstable = nix-darwin-unstable.lib.darwinSystem;
-            darwin-stable = nix-darwin-stable.lib.darwinSystem;
+            nixos = nixpkgs.lib.nixosSystem;
+            darwin = nix-darwin.lib.darwinSystem;
           }
-          .${node.release};
+          .${node.os};
+        node = moduleArgs.node';
       in
       lib.nameValuePair node.name (mkSystem {
-        specialArgs = {
-          node' = node;
-        } // moduleArgs;
+        specialArgs = moduleArgs;
         modules = [
           (
             { config, pkgs, ... }:
@@ -176,7 +190,7 @@ let
           "${node.basePath}/configuration.nix"
         ];
       })
-    ) (extractNodes (loadEntities releases));
+    ) (toModuleArgSet (loadEntities releases));
   importFile = base: name: (importDir base).${name} or null;
   importDir =
     base:
@@ -206,7 +220,7 @@ let
   flakeSelf = {
     nixosModules = importDir "${flake}/modules/nixos";
     darwinModules = importDir "${flake}/modules/darwin";
-    packages = self.forAllSystems (
+    packages = lib'.forAllSystems (
       system:
       let
         pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
