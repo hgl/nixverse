@@ -60,7 +60,9 @@ let
       system:
       let
         pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
-        nixverse = pkgs.callPackage (import ./package.nix) { };
+        nixverse = pkgs.callPackage (import ./package.nix) {
+          nixos-anywhere = self.inputs.nixos-anywhere.packages.${system}.default;
+        };
       in
       {
         inherit nixverse;

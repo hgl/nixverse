@@ -126,7 +126,7 @@
                     if !(node ? name) then
                       abort "missing name for node [${toString i}]: ${base}/default.nix"
                     else if forbiddenNames != [ ] then
-                      abort "must not specify these attributes in node (${base}/default.nix)[${toString i}]: ${toString forbiddenNames}"
+                      abort "must not specify these attributes in node ${node.name} (${base}/default.nix): ${toString forbiddenNames}"
                     else
                       node // extraAttrs'
                 ) raw;
