@@ -112,6 +112,18 @@ cmd_node_deploy() {
 	fi
 }
 
+cmd_node_rollback() {
+	local node_name=$1
+	local dst=${2-}
+
+	find_flake
+	nixos-rebuild switch \
+		--flake "$flake#$node_name" \
+		--target-host "$dst" \
+		--use-remote-sudo \
+		--rollback
+}
+
 cmd_node_state() {
 	local node_name=$1
 	local filter=${2:-.}
