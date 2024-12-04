@@ -135,9 +135,9 @@
             abort "must be a list of attrsets or an attrset: ${base}/default.nix"
         else
           {
-            group = "";
-            node = {
+            node = extraAttrs // {
               inherit name;
+              group = "";
             };
           };
       node = imported // {
