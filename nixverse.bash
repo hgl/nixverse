@@ -4,16 +4,18 @@ cmd_node_build() {
 	local node_name=$1
 	shift
 
-	find_flake_dir
+	find_flake
 	find_node
 	build_node "$@"
 }
 
 cmd_node_bootstrap() {
+	local update=''
 	local mk_hwconf=''
 	OPTIND=1
 	while getopts 'uc' opt; do
 		case $opt in
+		u) update=1 ;;
 		c) mk_hwconf=1 ;;
 		?) exit 1 ;;
 		esac
@@ -23,15 +25,15 @@ cmd_node_bootstrap() {
 	local node_name=$1
 	local dst=${2-}
 
-	find_flake_dir
+	find_flake
 	find_node
-	build_node
+	UPDATE=$update build_node
 	local use_disko=''
 	local f
-	if f=$(find_node_file -g partition.bash) && [[ -n $f ]]; then
+	if f=$(find_node_file partition.bash) && [[ -n $f ]]; then
 		#shellcheck disable=SC2029
 		ssh "$dst" "$(<"$f")"
-	elif f=$(find_node_file -g disk-config.nix) && [[ -n $f ]]; then
+	elif f=$(find_node_file disk-config.nix) && [[ -n $f ]]; then
 		use_disko=1
 	else
 		local boot_type boot_device root_format
@@ -46,26 +48,68 @@ cmd_node_bootstrap() {
 			$(<@out@/share/nixverse/partition)
 		"
 	fi
-	local node_dir=$flake_dir/nodes/$node_release/${node_group:+$node_group/}$node_name
+	f=$(find_node_file hardware-configuration.nix)
 	args=()
 	if [[ -n $mk_hwconf ]]; then
 		args+=(
 			--generate-hardware-config
 			nixos-generate-config
-			"$node_dir/hardware-configuration.nix"
+			"$f"
 		)
 	fi
-	local node_build_dir=$flake_dir/build/${node_group:+$node_group/}$node_name
-	if [[ -d $node_build_dir/fs ]]; then
-		args+=(--extra-files "$node_build_dir/fs")
+	f=$(find_node_file -b fs)
+	if [[ -d $f ]]; then
+		args+=(--extra-files "$f")
 	fi
 	if [[ -z $use_disko ]]; then
 		args+=(--phases 'install,reboot')
 	fi
 	nixos-anywhere \
-		--flake "$flake_dir#$node_name" \
+		--flake "$flake#$node_name" \
 		"${args[@]}" \
 		"$dst"
+}
+
+cmd_node_deploy() {
+	local update=''
+	OPTIND=1
+	while getopts 'u' opt; do
+		case $opt in
+		u) update=1 ;;
+		?) exit 1 ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+
+	local node_name=$1
+	local dst=${2-}
+
+	find_flake
+	find_node
+	UPDATE=$update build_node
+
+	local args=()
+	if [[ -n $dst ]]; then
+		args+=(
+			--target-host "$dst"
+			--use-remote-sudo
+		)
+	fi
+	nixos-rebuild switch \
+		--flake "$flake#$node_name" \
+		--show-trace \
+		"${args[@]}"
+	local f
+	f=$(find_node_file -b fs)
+	if [[ -d $f ]]; then
+		rsync \
+			--quiet \
+			--recursive \
+			--perms \
+			--times \
+			"$f/" \
+			"$dst:/"
+	fi
 }
 
 cmd_node_state() {
@@ -78,7 +122,7 @@ cmd_group_state() {
 	local node_group=$1
 	local filter=${2:-.}
 
-	find_flake_dir
+	find_flake
 	local fn
 	fn=$(
 		cat <<-EOF
@@ -109,23 +153,23 @@ cmd_group_state() {
 			end
 		EOF
 	)
-	nix eval --json --no-warn-dirty --impure "$flake_dir#self" --apply "$fn" |
+	nix eval --json --no-warn-dirty --impure "$flake#self" --apply "$fn" |
 		jq --raw-output "$filter"
 }
 
-find_flake_dir() {
-	flake_dir=$PWD
+find_flake() {
+	flake=$PWD
 	local f
 	while true; do
-		f=$flake_dir/flake.nix
+		f=$flake/flake.nix
 		if [[ -e $f ]]; then
 			return
 		fi
-		if [[ $flake_dir = / ]]; then
+		if [[ $flake = / ]]; then
 			echo >&2 "not in a flake directory: $PWD"
 			return 1
 		fi
-		flake_dir=$(dirname "$flake_dir")
+		flake=$(dirname "$flake")
 	done
 }
 
@@ -137,25 +181,26 @@ find_node() {
 }
 
 find_node_file() {
+	local build=''
 	OPTIND=1
-	local look_group=''
-	while getopts 'g' opt; do
+	while getopts 'b' opt; do
 		case $opt in
-		g) look_group=1 ;;
+		b) build=1 ;;
 		?) exit 1 ;;
 		esac
 	done
 	shift $((OPTIND - 1))
 
-	local file=$1
+	local name=$1
 	local files=()
 	if [[ -z $node_group ]]; then
-		scripts+=("$flake_dir/nodes/$node_release/$node_name/$file")
+		scripts+=("$flake/${build:+build/}nodes/$node_release/$node_name/$name")
 	else
-		scripts+=("$flake_dir/nodes/$node_release/$node_group/$node_name/$file")
-		if [[ -n $look_group ]]; then
-			scripts+=("$flake_dir/nodes/$node_release/$node_group/$file")
-		fi
+		scripts+=(
+			"$flake/${build:+build/}nodes/$node_release/$node_group/$node_name/$name"
+			"$flake/${build:+build/}nodes/$node_release/$node_group/common/$name"
+			"$flake/${build:+build/}nodes/$node_release/$node_group/$name"
+		)
 	fi
 	local f
 	for f in "${files[@]}"; do
@@ -169,7 +214,7 @@ find_node_file() {
 
 node_json() {
 	local filter=$1
-	find_flake_dir
+	find_flake
 	local fn
 	fn=$(
 		cat <<-EOF
@@ -197,15 +242,15 @@ node_json() {
 			end
 		EOF
 	)
-	nix eval --json --no-warn-dirty --impure "$flake_dir#self" --apply "$fn" |
+	nix eval --json --no-warn-dirty --impure "$flake#self" --apply "$fn" |
 		jq --raw-output "$filter"
 }
 
 build_node() {
-	f=$(find_node_file -g Makefile)
+	f=$(find_node_file Makefile)
 	if [[ -z $f ]]; then
-		if [[ -e $flake_dir/Makefile ]]; then
-			f=$flake_dir/Makefile
+		if [[ -e $flake/Makefile ]]; then
+			f=$flake/Makefile
 		else
 			return
 		fi
