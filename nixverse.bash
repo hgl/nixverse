@@ -124,6 +124,12 @@ cmd_node_rollback() {
 		--rollback
 }
 
+cmd_node_cleanup() {
+	local dst=${1-}
+
+	ssh "$dst" nix-collect-garbage --delete-old
+}
+
 cmd_node_state() {
 	local node_name=$1
 	local filter=${2:-.}
