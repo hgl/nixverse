@@ -154,12 +154,9 @@ cmd_group_state() {
 					lib.concatMap (n: if n ? nodes then [ n.nodes ] else [ ]) nodes
 				);
 			in
-			{
-				flakePath = toString flake;
-				nodes = lib'.filterRecursive
-					(n: v: !(lib.isFunction v))
-					group;
-			}
+			lib'.filterRecursive
+				(n: v: !(lib.isFunction v))
+				group
 		EOF
 	)
 	filter=$(
