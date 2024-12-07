@@ -87,7 +87,6 @@
       raw = lib'.callWithOptionalArgs (import base) libArgs;
       extraAttrs = {
         inherit release os channel;
-        basePath = base;
       };
       imported =
         if lib.pathExists "${base}/default.nix" then
@@ -141,7 +140,7 @@
             };
           };
       node = imported // {
-        inherit inputs;
+        inherit inputs base;
         lib = finalLib;
       };
     in

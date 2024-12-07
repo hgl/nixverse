@@ -18,7 +18,12 @@ let
       ) nodes;
     in
     lib'.mapListToAttrs (
-      { inputs, node, ... }@arg:
+      {
+        inputs,
+        base,
+        node,
+        ...
+      }@arg:
       let
         mkSystem =
           {
@@ -48,7 +53,7 @@ let
               networking.hostName = lib.mkDefault node.name;
             }
           )
-          "${node.basePath}/configuration.nix"
+          "${base}/configuration.nix"
         ];
       })
     ) args;
