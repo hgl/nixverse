@@ -51,6 +51,8 @@ let
                   pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform};
                 };
               networking.hostName = lib.mkDefault node.name;
+              # Needed for syncing fs when deploying
+              environment.systemPackages = with pkgs; [ rsync ];
             }
           )
           "${base}/configuration.nix"

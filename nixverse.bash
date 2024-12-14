@@ -1,10 +1,16 @@
+#!@shell@
+set -euo pipefail
+
 PATH=@PATH@:$PATH
+
+cmd_node() {
+	cmd "$@"
+}
 
 cmd_node_build() {
 	local node_name=$1
 	shift
 
-	find_flake
 	find_node
 	build_node "$@"
 }
@@ -25,7 +31,6 @@ cmd_node_bootstrap() {
 	local node_name=$1
 	local dst=${2-}
 
-	find_flake
 	find_node
 	UPDATE=$update build_node
 	local use_disko=''
@@ -48,19 +53,19 @@ cmd_node_bootstrap() {
 			$(<@out@/share/nixverse/partition)
 		"
 	fi
-	f=$(find_node_file hardware-configuration.nix)
 	args=()
-	if [[ -n $mk_hwconf ]]; then
+	f=$(find_node_file hardware-configuration.nix)
+	if [[ -z "$f" ]] || [[ -n $mk_hwconf ]]; then
 		args+=(
 			--generate-hardware-config
 			nixos-generate-config
-			"$f"
+			"$node_dir/hardware-configuration.nix"
 		)
 	fi
-	f=$(find_node_file -b fs)
-	if [[ -d $f ]]; then
-		args+=(--extra-files "$f")
-	fi
+	decrypt_ssh_host_keys
+	#shellcheck disable=SC2064
+	trap "rm '$node_dir/fs/etc/ssh'/ssh_host_*_key" EXIT
+	args+=(--extra-files "$node_dir/fs")
 	if [[ -z $use_disko ]]; then
 		args+=(--phases 'install,reboot')
 	fi
@@ -68,6 +73,12 @@ cmd_node_bootstrap() {
 		--flake "$flake#$node_name" \
 		"${args[@]}" \
 		"$dst"
+}
+
+cmd_test() {
+	local node_name=$1
+	find_node
+	decrypt_ssh_host_keys
 }
 
 cmd_node_deploy() {
@@ -84,7 +95,6 @@ cmd_node_deploy() {
 	local node_name=$1
 	local dst=${2-}
 
-	find_flake
 	find_node
 	UPDATE=$update build_node
 
@@ -93,23 +103,27 @@ cmd_node_deploy() {
 		args+=(
 			--target-host "$dst"
 			--use-remote-sudo
+			--fast
 		)
 	fi
 	nixos-rebuild switch \
 		--flake "$flake#$node_name" \
 		--show-trace \
 		"${args[@]}"
-	local f
-	f=$(find_node_file -b fs)
-	if [[ -d $f ]]; then
-		rsync \
-			--quiet \
-			--recursive \
-			--perms \
-			--times \
-			"$f/" \
-			"$dst:/"
+	local dirs
+	dirs=$(find_node_file -acr fs)
+	if [[ -z $dirs ]]; then
+		echo >&2 'fs directory not found'
+		return 1
 	fi
+	readarray -t dirs <<<"$dirs"
+	rsync \
+		--quiet \
+		--recursive \
+		--perms \
+		--times \
+		"${dirs[@]/%//}" \
+		"${dst:+$dst:}/"
 }
 
 cmd_node_rollback() {
@@ -117,14 +131,22 @@ cmd_node_rollback() {
 	local dst=${2-}
 
 	find_flake
+
+	local args=()
+	if [[ -n $dst ]]; then
+		args+=(
+			--target-host "$dst"
+			--use-remote-sudo
+			--fast
+		)
+	fi
 	nixos-rebuild switch \
 		--flake "$flake#$node_name" \
-		--target-host "$dst" \
-		--use-remote-sudo \
+		"${args[@]}" \
 		--rollback
 }
 
-cmd_node_cleanup() {
+cmd_cleanup() {
 	local dst=${1-}
 
 	ssh "$dst" nix-collect-garbage --delete-old
@@ -134,6 +156,69 @@ cmd_node_state() {
 	local node_name=$1
 	local filter=${2:-.}
 	node_json "$filter"
+}
+
+cmd_secrets() {
+	cmd "$@"
+}
+
+cmd_secrets_edit() {
+	local node_name=$1
+	local secrets_name=${2:-main.yaml}
+
+	find_node
+	local base_secrets=$node_base_dir/secrets.yaml
+	local node_secrets=$node_dir/secrets/main.yaml
+	if [[ $secrets_name = main.yaml ]]; then
+		local new=''
+		if [[ ! -e $base_secrets ]]; then
+			new=1
+			local recipients
+			recipients=$(master_age_recipients)
+			(
+				umask a=,u=rw
+				cat <<EOF >"$base_secrets"
+common:
+  # secrets for all nodes
+  name: value
+${node_name}:
+  # secrets for this node only, overrides those in common
+  name: value
+EOF
+			)
+			sops encrypt --age "$recipients" --in-place "$base_secrets"
+		fi
+		if sops --indent 2 "$base_secrets"; then
+			:
+		elif [[ $? = 200 ]]; then
+			if [[ -z $new ]] && [[ -e $node_secrets ]]; then
+				return
+			fi
+		else
+			return 1
+		fi
+		local tmp
+		tmp=$(mktemp)
+		#shellcheck disable=SC2016
+		sops decrypt "$base_secrets" |
+			yq --yaml-output --indent 2 --arg n "$node_name" '(.common // {}) * (.[$n] // {})' >"$tmp"
+		#shellcheck disable=SC2064
+		trap "rm -f '$tmp'" EXIT
+
+		f=
+		if [[ ! -e $node_secrets ]]; then
+			local recipient
+			recipient=$(node_age_recipient)
+			(
+				umask a=,u=rw
+				sops encrypt --age "$recipient" --filename-override "$node_secrets" --output "$node_secrets" "$tmp"
+			)
+		else
+			local key
+			key=$(node_age_key)
+			EDITOR="mv $tmp" SOPS_AGE_KEY=$key sops edit "$node_secrets"
+		fi
+	fi
 }
 
 cmd_group_state() {
@@ -193,35 +278,55 @@ find_node() {
 	IFS=, read -r node_release node_os node_channel node_group < <(
 		jq --raw-output '"\(.release),\(.os),\(.channel),\(.group)"' <<<"$node_json"
 	)
+	if [[ -z ${flake-} ]]; then
+		find_flake
+	fi
+	if [[ -z $node_group ]]; then
+		node_base_dir=$flake/nodes/$node_release/$node_name
+		node_dir=$node_base_dir
+	else
+		node_base_dir=$flake/nodes/$node_release/$node_group
+		node_dir=$node_base_dir/$node_name
+	fi
 }
 
 find_node_file() {
-	local build=''
+	local all=''
+	local use_common=''
+	local reverse=''
 	OPTIND=1
-	while getopts 'b' opt; do
+	while getopts 'acr' opt; do
 		case $opt in
-		b) build=1 ;;
+		a) all=1 ;;
+		c) use_common=1 ;;
+		r) reverse=1 ;;
 		?) exit 1 ;;
 		esac
 	done
 	shift $((OPTIND - 1))
 
 	local name=$1
-	local files=()
-	if [[ -z $node_group ]]; then
-		scripts+=("$flake/${build:+build/}nodes/$node_release/$node_name/$name")
-	else
-		scripts+=(
-			"$flake/${build:+build/}nodes/$node_release/$node_group/$node_name/$name"
-			"$flake/${build:+build/}nodes/$node_release/$node_group/common/$name"
-			"$flake/${build:+build/}nodes/$node_release/$node_group/$name"
-		)
+	local files=("$node_dir/$name")
+	if [[ -n $node_group ]]; then
+		local dir
+		if [[ -n $use_common ]]; then
+			dir=$node_base_dir/common
+		else
+			dir=$node_base_dir
+		fi
+		if [[ -z $reverse ]]; then
+			files+=("$dir/$name")
+		else
+			files=("$dir/$name" "${files[@]}")
+		fi
 	fi
 	local f
 	for f in "${files[@]}"; do
 		if [[ -e $f ]]; then
 			echo "$f"
-			return
+			if [[ -z $all ]]; then
+				return
+			fi
 		fi
 	done
 	echo ''
@@ -261,8 +366,30 @@ node_json() {
 		jq --raw-output "$filter"
 }
 
+master_age_recipients() {
+	local recipients
+	if [[ ! -e $flake/config.yaml ]]; then
+		echo >&2 "config.yaml not found in $flake"
+		return 1
+	fi
+	recipients=$(yq --raw-output '[.["master-age-recipients"] // empty] | flatten(1) | join(",")' "$flake/config.yaml")
+	if [[ -z $recipients ]]; then
+		echo >&2 "Missing master-age-recipient in $flake/config.yaml"
+		return 1
+	fi
+	echo "$recipients"
+}
+
+node_age_recipient() {
+	ssh-to-age -i "$node_dir/fs/etc/ssh/ssh_host_ed25519_key.pub"
+}
+
+node_age_key() {
+	sops decrypt "$node_dir/secrets/ssh_host_ed25519_key" | ssh-to-age -private-key
+}
+
 build_node() {
-	f=$(find_node_file Makefile)
+	f=$(find_node_file -r Makefile)
 	if [[ -z $f ]]; then
 		if [[ -e $flake/Makefile ]]; then
 			f=$flake/Makefile
@@ -272,6 +399,22 @@ build_node() {
 	fi
 	local dir
 	dir=$(dirname "$f")
+	local recipients
+	recipients=$(master_age_recipients)
+
+	NODE_RELEASE=$node_release \
+		NODE_OS=$node_os \
+		NODE_CHANNEL=$node_channel \
+		NODE_NAME=$node_name \
+		NODE_GROUP=$node_group \
+		MASTER_AGE_RECIPIENTS=$recipients \
+		make \
+		-C "$dir" \
+		-f @out@/share/nixverse/Makefile \
+		--no-builtin-rules \
+		--no-builtin-variables \
+		--warn-undefined-variables \
+		"$@"
 	NODE_RELEASE=$node_release \
 		NODE_OS=$node_os \
 		NODE_CHANNEL=$node_channel \
@@ -285,31 +428,34 @@ build_node() {
 		"$@"
 }
 
-HELP=''
-COMMAND=${1-}
-if [[ $COMMAND = help ]]; then
+decrypt_ssh_host_keys() {
+	(
+		umask a=,u=rw
+		for f in "$node_dir/secrets"/ssh_host_*_key; do
+			sops decrypt --output "$node_dir/fs/etc/ssh/$(basename "$f")" "$f"
+		done
+	)
+}
+
+cmd() {
+	COMMANDS="${COMMANDS:+$COMMANDS }$1"
 	shift
-	COMMAND=${1-}
+	local cmd=cmd${HELP:+_help}_${COMMANDS// /_}
+
+	if [[ $(type -t "$cmd") = function ]]; then
+		"$cmd" "$@"
+	else
+		cat >&2 <<-EOF
+			Unknown command: $COMMANDS
+			Use "nixverse help" to find out usage.
+		EOF
+		return 1
+	fi
+}
+
+HELP=''
+if [[ ${1-} = help ]]; then
+	shift
 	HELP=1
 fi
-SUBCOMMAND=${2-}
-cmd=cmd${HELP:+_help}_${COMMAND}_${SUBCOMMAND}
-if [[ -n $COMMAND ]] && [[ -n $SUBCOMMAND ]] && [[ $(type -t "$cmd") = function ]]; then
-	shift 2
-	"$cmd" "$@"
-	exit
-fi
-cmd=cmd${HELP:+_help}_$COMMAND
-if [[ -n $COMMAND ]] && [[ $(type -t "$cmd") = function ]]; then
-	shift
-	"$cmd" "$@"
-	exit
-fi
-if [[ -n $COMMAND ]]; then
-	cat >&2 <<-EOF
-		Unknown command: $COMMAND${SUBCOMMAND:+ $SUBCOMMAND}
-		Use "nixverse help" to find out usage.
-	EOF
-	exit 1
-fi
-cmd_help
+cmd "$@"
