@@ -2,32 +2,37 @@ SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
 .ONESHELL:
 .DELETE_ON_ERROR:
-
-ifeq ($(NODE_GROUP),)
-  group_dir :=
-  node_dir = nodes/$(NODE_RELEASE)/$(NODE_NAME)
-else
-  group_dir := nodes/$(NODE_RELEASE)/$(NODE_GROUP)
-  node_dir := $(group_dir)/$(NODE_NAME)
-endif
+.DEFAULT_GOAL := all
 
 node_key_types := ed25519 rsa
 
-.PHONY: all
+.PHONY: ssh-host-keys
 ifeq ($(NODE_OS),nixos)
-  all: $(foreach t,$(node_key_types),$(node_dir)/secrets/ssh_host_$(t)_key $(node_dir)/fs/etc/ssh/ssh_host_$(t)_key.pub)
+  ssh-host-keys: $(foreach t,$(node_key_types),$(NODE_DIR)/secrets/fs/etc/ssh/ssh_host_$(t)_key $(NODE_DIR)/fs/etc/ssh/ssh_host_$(t)_key.pub)
 endif
 
-$(node_dir)/secrets/ssh_host_%_key $(node_dir)/fs/etc/ssh/ssh_host_%_key.pub &: | $(node_dir)/secrets $(node_dir)/fs/etc/ssh
-	@f=$(node_dir)/fs/etc/ssh/ssh_host_$*_key
+$(NODE_DIR)/secrets/fs/etc/ssh/ssh_host_%_key $(NODE_DIR)/fs/etc/ssh/ssh_host_%_key.pub &: | $(NODE_DIR)/secrets/fs/etc/ssh $(NODE_DIR)/fs/etc/ssh
+	@key=$(NODE_DIR)/secrets/fs/etc/ssh/ssh_host_$*_key
+	pubkey=$(NODE_DIR)/fs/etc/ssh/ssh_host_$*_key.pub
 	if [[ -e $$f ]]; then
-		ssh-keygen -yf "$$f" | cut -d ' ' -f-2 >"$$f.pub"
-		chmod a=r,u+w "$$f.pub"
+		ssh-keygen -yf "$$f" | cut -d ' ' -f-2 >"$$pubkey"
+		chmod a=r,u+w "$$pubkey"
 	else
 		ssh-keygen -t $* -N '' -C '' -f "$$f"
+		mv "$$f.pub" "$$pubkey"
 	fi
-	sops encrypt --age $(MASTER_AGE_RECIPIENTS) --input-type binary --output $(node_dir)/secrets/ssh_host_$*_key "$$f"
-	rm "$$f"
+	nixverse root-secrets encrypt "$$f"
 
-$(node_dir)/secrets $(node_dir)/fs/etc/ssh:
+.PHONY: all
+secrets_fs_files = $(patsubst $(NODE_DIR)/%,$(NODE_BUILD_DIR)/%,$(shell find $(NODE_DIR)/secrets/fs -mindepth 1 -type f))
+all: $(secrets_fs_files)
+
+$(NODE_BUILD_DIR)/secrets/fs/etc/ssh/ssh_host_%_key: $(NODE_DIR)/secrets/fs/etc/ssh/ssh_host_%_key | $(NODE_BUILD_DIR)/secrets/fs/etc/ssh
+	nixverse root-secrets decrypt $< $@
+
+$(NODE_BUILD_DIR)/secrets/fs/%: $(NODE_DIR)/secrets/fs/% $(NODE_BUILD_DIR)/fs/etc/ssh/ssh_host_ed25519_key
+	mkdir -p $(@D)
+	nixverse secrets decrypt $< $@
+
+$(NODE_DIR)/secrets/fs/etc/ssh $(NODE_BUILD_DIR)/secrets/fs/etc/ssh $(NODE_DIR)/fs/etc/ssh:
 	mkdir -p $@

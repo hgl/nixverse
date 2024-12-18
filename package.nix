@@ -3,6 +3,7 @@
   runCommand,
   bash,
   coreutils,
+  findutils,
   gnumake,
   openssh,
   sops,
@@ -11,6 +12,7 @@
   yq,
   nixos-anywhere,
   nixos-rebuild,
+  darwin-rebuild,
 }:
 runCommand "nixverse" { } ''
   mkdir -p $out/{bin,share/nixverse}
@@ -18,10 +20,11 @@ runCommand "nixverse" { } ''
   cp ${./Makefile} $out/share/nixverse/Makefile
   substitute ${./nixverse.bash} $out/bin/nixverse \
     --subst-var-by shell "${lib.getExe bash}" \
-    --subst-var-by PATH ${
+    --subst-var-by path ${
       lib.makeBinPath [
         bash
         coreutils
+        findutils
         gnumake
         openssh
         sops
@@ -30,6 +33,8 @@ runCommand "nixverse" { } ''
         yq
         nixos-anywhere
         nixos-rebuild
+        darwin-rebuild
+        (builtins.placeholder "out")
       ]
     } \
     --subst-var-by out $out

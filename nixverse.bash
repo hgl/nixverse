@@ -1,7 +1,7 @@
 #!@shell@
 set -euo pipefail
 
-PATH=@PATH@:$PATH
+PATH=@path@:$PATH
 
 cmd_node() {
 	cmd "$@"
@@ -11,18 +11,16 @@ cmd_node_build() {
 	local node_name=$1
 	shift
 
-	find_node
-	build_node "$@"
+	build_node
+	build_nixverse_node
 }
 
 cmd_node_bootstrap() {
-	local update=''
-	local mk_hwconf=''
+	local remote_build=''
 	OPTIND=1
-	while getopts 'uc' opt; do
+	while getopts 'r' opt; do
 		case $opt in
-		u) update=1 ;;
-		c) mk_hwconf=1 ;;
+		r) remote_build=1 ;;
 		?) exit 1 ;;
 		esac
 	done
@@ -31,8 +29,9 @@ cmd_node_bootstrap() {
 	local node_name=$1
 	local dst=${2-}
 
-	find_node
-	UPDATE=$update build_node
+	build_node
+	build_nixverse_node
+
 	local use_disko=''
 	local f
 	if f=$(find_node_file partition.bash) && [[ -n $f ]]; then
@@ -53,77 +52,59 @@ cmd_node_bootstrap() {
 			$(<@out@/share/nixverse/partition)
 		"
 	fi
-	args=()
-	f=$(find_node_file hardware-configuration.nix)
-	if [[ -z "$f" ]] || [[ -n $mk_hwconf ]]; then
-		args+=(
-			--generate-hardware-config
-			nixos-generate-config
-			"$node_dir/hardware-configuration.nix"
-		)
-	fi
-	decrypt_ssh_host_keys
-	#shellcheck disable=SC2064
-	trap "rm '$node_dir/fs/etc/ssh'/ssh_host_*_key" EXIT
-	args+=(--extra-files "$node_dir/fs")
+	args=(
+		--generate-hardware-config
+		nixos-generate-config
+		"$node_dir/hardware-configuration.nix"
+	)
+
 	if [[ -z $use_disko ]]; then
-		args+=(--phases 'install,reboot')
+		args+=(--phases 'install')
+	else
+		args+=(--phases 'disko,install')
+	fi
+	if [[ -n $remote_build ]]; then
+		args+=(--build-on-remote)
 	fi
 	nixos-anywhere \
 		--flake "$flake#$node_name" \
 		"${args[@]}" \
 		"$dst"
-}
-
-cmd_test() {
-	local node_name=$1
-	find_node
-	decrypt_ssh_host_keys
+	rsync_fs /mnt
+	rsync_home_fs /mnt
 }
 
 cmd_node_deploy() {
-	local update=''
-	OPTIND=1
-	while getopts 'u' opt; do
-		case $opt in
-		u) update=1 ;;
-		?) exit 1 ;;
-		esac
-	done
-	shift $((OPTIND - 1))
-
 	local node_name=$1
 	local dst=${2-}
 
-	find_node
-	UPDATE=$update build_node
+	build_node
+	build_nixverse_node
 
-	local args=()
-	if [[ -n $dst ]]; then
-		args+=(
-			--target-host "$dst"
-			--use-remote-sudo
-			--fast
-		)
-	fi
-	nixos-rebuild switch \
-		--flake "$flake#$node_name" \
-		--show-trace \
-		"${args[@]}"
-	local dirs
-	dirs=$(find_node_file -acr fs)
-	if [[ -z $dirs ]]; then
-		echo >&2 'fs directory not found'
-		return 1
-	fi
-	readarray -t dirs <<<"$dirs"
-	rsync \
-		--quiet \
-		--recursive \
-		--perms \
-		--times \
-		"${dirs[@]/%//}" \
-		"${dst:+$dst:}/"
+	case $node_os in
+	nixos)
+		local args=()
+		if [[ -n $dst ]]; then
+			args+=(
+				--target-host "$dst"
+				--use-remote-sudo
+				--fast
+			)
+		fi
+		nixos-rebuild switch \
+			--flake "$flake#$node_name" \
+			--show-trace \
+			"${args[@]}"
+		;;
+	darwin)
+		darwin-rebuild switch \
+			--flake "$flake#$node_name" \
+			--show-trace
+		;;
+	esac
+
+	rsync_fs
+	rsync_home_fs
 }
 
 cmd_node_rollback() {
@@ -155,7 +136,123 @@ cmd_cleanup() {
 cmd_node_state() {
 	local node_name=$1
 	local filter=${2:-.}
-	node_json "$filter"
+
+	find_node_json
+	jq --raw-output "$filter" <<<"$node_json"
+}
+
+cmd_config() {
+	local filter=${1-.}
+
+	find_flake
+	local f=$flake/config.yaml
+	if [[ ! -e $f ]]; then
+		echo >&2 "config.yaml not found in $flake"
+		return 1
+	fi
+	yq --raw-output "$filter" "$f"
+}
+
+cmd_root-secrets() {
+	cmd "$@"
+}
+
+cmd_root-secrets_edit() {
+	local f=$1
+	if [[ ! -e $f ]]; then
+		(
+			umask a=,u=rw
+			cat <<EOF >"$f"
+name: value
+EOF
+		)
+		cmd_root-secrets_encrypt -t yaml "$f"
+	fi
+	if sops --input-type yaml --output-type yaml --indent 2 "$f"; then
+		return
+	elif [[ $? = 200 ]]; then
+		return
+	else
+		return 1
+	fi
+}
+
+cmd_root-secrets_encrypt() {
+	local type=''
+	OPTIND=1
+	while getopts 't:' opt; do
+		case $opt in
+		t) type=$OPTARG ;;
+		?) exit 1 ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+
+	local in_file=$1
+	local out_file=${2-}
+
+	find_flake
+	if [[ $in_file = - ]]; then
+		in_file=/dev/stdin
+	fi
+	local recipients
+	recipients=$(cmd_config '[.["root-age-recipients"] // empty] | flatten(1) | join(",")')
+	if [[ -z $recipients ]]; then
+		echo >&2 "Missing root-age-recipient in $flake/config.yaml"
+		return 1
+	fi
+	local args=()
+	if [[ -n $type ]]; then
+		args+=(--input-type "$type")
+	fi
+	if [[ -z $out_file ]]; then
+		args+=(--in-place)
+	elif [[ $out_file != - ]]; then
+		mkdir -p "$(dirname "$out_file")"
+		args+=(--output "$out_file")
+	fi
+	(
+		umask a=,u=rw
+		sops encrypt \
+			--age "$recipients" \
+			"${args[@]}" \
+			"$in_file"
+	)
+}
+
+cmd_root-secrets_decrypt() {
+	local type=''
+	OPTIND=1
+	while getopts 't:' opt; do
+		case $opt in
+		t) type=$OPTARG ;;
+		?) exit 1 ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+
+	local in_file=$1
+	local out_file=${2-}
+
+	if [[ $in_file = - ]]; then
+		in_file=/dev/stdin
+	fi
+	local args=()
+	if [[ -n $type ]]; then
+		args+=(--output-type "$type")
+	fi
+	if [[ -z $out_file ]]; then
+		args+=(--in-place)
+	elif [[ $out_file != - ]]; then
+		mkdir -p "$(dirname "$out_file")"
+		args+=(--output "$out_file")
+	fi
+	(
+		umask a=,u=rw
+		sops decrypt \
+			"${args[@]}" \
+			"$in_file"
+	)
 }
 
 cmd_secrets() {
@@ -164,20 +261,18 @@ cmd_secrets() {
 
 cmd_secrets_edit() {
 	local node_name=$1
-	local secrets_name=${2:-main.yaml}
+	local f=${2-}
 
 	find_node
-	local base_secrets=$node_base_dir/secrets.yaml
-	local node_secrets=$node_dir/secrets/main.yaml
-	if [[ $secrets_name = main.yaml ]]; then
+	local base_secrets=$node_base_dir/${node_group:+common/}/secrets/main.yaml
+	if [[ -z $f ]] && f=$base_secrets || [[ $f = "$base_secrets" ]]; then
+		local node_secrets=$node_dir/secrets/main.yaml
 		local new=''
-		if [[ ! -e $base_secrets ]]; then
+		if [[ ! -e $f ]]; then
 			new=1
-			local recipients
-			recipients=$(master_age_recipients)
 			(
 				umask a=,u=rw
-				cat <<EOF >"$base_secrets"
+				cat <<EOF >"$f"
 common:
   # secrets for all nodes
   name: value
@@ -186,9 +281,9 @@ ${node_name}:
   name: value
 EOF
 			)
-			sops encrypt --age "$recipients" --in-place "$base_secrets"
+			cmd_root-secrets_encrypt -t yaml "$f"
 		fi
-		if sops --indent 2 "$base_secrets"; then
+		if sops --indent 2 "$f"; then
 			:
 		elif [[ $? = 200 ]]; then
 			if [[ -z $new ]] && [[ -e $node_secrets ]]; then
@@ -200,12 +295,11 @@ EOF
 		local tmp
 		tmp=$(mktemp)
 		#shellcheck disable=SC2016
-		sops decrypt "$base_secrets" |
+		sops decrypt "$f" |
 			yq --yaml-output --indent 2 --arg n "$node_name" '(.common // {}) * (.[$n] // {})' >"$tmp"
 		#shellcheck disable=SC2064
 		trap "rm -f '$tmp'" EXIT
 
-		f=
 		if [[ ! -e $node_secrets ]]; then
 			local recipient
 			recipient=$(node_age_recipient)
@@ -218,46 +312,121 @@ EOF
 			key=$(node_age_key)
 			EDITOR="mv $tmp" SOPS_AGE_KEY=$key sops edit "$node_secrets"
 		fi
+	else
+		if [[ ! -e $f ]]; then
+			(
+				umask a=,u=rw
+				cat <<EOF >"$f"
+name: value
+EOF
+			)
+			cmd_secrets_encrypt -t yaml "$f"
+		fi
+		if sops --indent 2 "$f"; then
+			return
+		elif [[ $? = 200 ]]; then
+			return
+		else
+			return 1
+		fi
 	fi
+
+}
+
+cmd_secrets_encrypt() {
+	local type=''
+	OPTIND=1
+	while getopts 't:' opt; do
+		case $opt in
+		t) type=$OPTARG ;;
+		?) exit 1 ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+
+	local node_name=$1
+	local in_file=$2
+	local out_file=${3-}
+
+	if [[ $in_file = - ]]; then
+		in_file=/dev/stdin
+	fi
+	local args=()
+	if [[ -n $type ]]; then
+		args+=(--input-type "$type")
+	fi
+	if [[ -z $out_file ]]; then
+		args+=(--in-place)
+	elif [[ $out_file != - ]]; then
+		mkdir -p "$(dirname "$out_file")"
+		args+=(--output "$out_file")
+	fi
+	local recipient
+	recipient=$(node_age_recipient)
+	(
+		umask a=,u=rw
+		sops encrypt \
+			--age "$recipient" \
+			"${args[@]}" \
+			"$in_file"
+	)
+}
+
+cmd_secrets_decrypt() {
+	local type=''
+	OPTIND=1
+	while getopts 't:' opt; do
+		case $opt in
+		t) type=$OPTARG ;;
+		?) exit 1 ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+
+	local node_name=$1
+	local in_file=$2
+	local out_file=${3-}
+
+	if [[ $in_file = - ]]; then
+		in_file=/dev/stdin
+	fi
+	local args=()
+	if [[ -n $type ]]; then
+		args+=(--output-type "$type")
+	fi
+	if [[ -z $out_file ]]; then
+		args+=(--in-place)
+	elif [[ $out_file != - ]]; then
+		mkdir -p "$(dirname "$out_file")"
+		args+=(--output "$out_file")
+	fi
+	local age_key
+	age_key=$(node_age_key)
+	(
+		umask a=,u=rw
+		SOPS_AGE_KEY=$age_key sops decrypt \
+			--input-type yaml \
+			"${args[@]}" \
+			"$in_file"
+	)
+}
+
+cmd_group() {
+	cmd "$@"
 }
 
 cmd_group_state() {
 	local node_group=$1
 	local filter=${2:-.}
 
-	find_flake
-	local fn
-	fn=$(
-		cat <<-EOF
-			flake:
-			let
-				lib = flake.inputs.nixpkgs-unstable.lib;
-				lib' = flake.inputs.nixverse.lib;
-				releases = lib'.concatMapAttrsToList (os: releases: releases) lib'.releaseGroups;
-				nodes = lib'.loadNodes flake releases;
-				group = lib.findFirst (ns: (lib.elemAt ns 0).group == "$node_group") null (
-					lib.concatMap (n: if n ? nodes then [ n.nodes ] else [ ]) nodes
-				);
-			in
-			lib'.filterRecursive
-				(n: v: !(lib.isFunction v))
-				group
-		EOF
-	)
-	filter=$(
-		cat <<-EOF
-			if . == null then
-				"Unknown group $node_group\n" | halt_error(1)
-			else
-				. | $filter
-			end
-		EOF
-	)
-	nix eval --json --no-warn-dirty --impure "$flake#self" --apply "$fn" |
-		jq --raw-output "$filter"
+	find_group_json
+	jq --raw-output "$filter" <<<"$group_json"
 }
 
 find_flake() {
+	if [[ -n ${flake-} ]]; then
+		return
+	fi
 	flake=$PWD
 	local f
 	while true; do
@@ -274,166 +443,262 @@ find_flake() {
 }
 
 find_node() {
-	node_json=$(node_json .)
-	IFS=, read -r node_release node_os node_channel node_group < <(
-		jq --raw-output '"\(.release),\(.os),\(.channel),\(.group)"' <<<"$node_json"
+	if [[ -n ${node_os-} ]]; then
+		return
+	fi
+	find_node_json
+	IFS=, read -r node_os node_channel node_group node_dir node_base_dir < <(
+		jq --raw-output '"\(.os),\(.channel),\(.group),\(.dir),\(.baseDir)"' <<<"$node_json"
 	)
-	if [[ -z ${flake-} ]]; then
-		find_flake
-	fi
-	if [[ -z $node_group ]]; then
-		node_base_dir=$flake/nodes/$node_release/$node_name
-		node_dir=$node_base_dir
-	else
-		node_base_dir=$flake/nodes/$node_release/$node_group
-		node_dir=$node_base_dir/$node_name
-	fi
+	node_build_dir=$flake/build/$node_dir
+	node_build_base_dir=$flake/build/$node_base_dir
+	node_dir=$flake/$node_dir
+	node_base_dir=$flake/$node_base_dir
 }
 
 find_node_file() {
-	local all=''
-	local use_common=''
-	local reverse=''
-	OPTIND=1
-	while getopts 'acr' opt; do
-		case $opt in
-		a) all=1 ;;
-		c) use_common=1 ;;
-		r) reverse=1 ;;
-		?) exit 1 ;;
-		esac
-	done
-	shift $((OPTIND - 1))
+	find_node
 
 	local name=$1
 	local files=("$node_dir/$name")
 	if [[ -n $node_group ]]; then
-		local dir
-		if [[ -n $use_common ]]; then
-			dir=$node_base_dir/common
-		else
-			dir=$node_base_dir
-		fi
-		if [[ -z $reverse ]]; then
-			files+=("$dir/$name")
-		else
-			files=("$dir/$name" "${files[@]}")
-		fi
+		files+=("$node_base_dir/common/$name")
 	fi
 	local f
 	for f in "${files[@]}"; do
 		if [[ -e $f ]]; then
 			echo "$f"
-			if [[ -z $all ]]; then
-				return
-			fi
+			return
 		fi
 	done
 	echo ''
 }
 
-node_json() {
-	local filter=$1
+find_node_json() {
 	find_flake
+
 	local fn
 	fn=$(
 		cat <<-EOF
-			flake:
+			{ self, nodes, ... }:
 			let
-				lib = flake.inputs.nixpkgs-unstable.lib;
-				lib' = flake.inputs.nixverse.lib;
-				releases = lib'.concatMapAttrsToList (os: releases: releases) lib'.releaseGroups;
-				nodes = lib'.loadNodes flake releases;
-				node = lib.findFirst (n: n.name == "$node_name") null (
-					lib.concatMap (n: n.nodes or [ n.node ]) nodes
-				);
+				inherit (self) inputs;
+				inherit (inputs.nixpkgs-unstable) lib;
+				lib' = inputs.nixverse-unstable.lib;
+				node = nodes.\${"$node_name"} or null;
 			in
-			lib'.filterRecursive
-				(n: v: !(lib.isFunction v))
-				node
+			if node == null then
+				null
+			else
+				lib'.filterRecursive
+					(n: v: !(lib.isFunction v))
+					node
 		EOF
 	)
+	local filter
 	filter=$(
 		cat <<-EOF
 			if . == null then
 				"Unknown node $node_name\n" | halt_error(1)
 			else
-				. | $filter
+				.
 			end
 		EOF
 	)
-	nix eval --json --no-warn-dirty --impure "$flake#self" --apply "$fn" |
-		jq --raw-output "$filter"
+	node_json=$(
+		nix eval \
+			--json \
+			--no-warn-dirty \
+			--impure "$flake#." \
+			--apply "$fn" \
+			--show-trace |
+			jq "$filter"
+	)
 }
 
-master_age_recipients() {
-	local recipients
-	if [[ ! -e $flake/config.yaml ]]; then
-		echo >&2 "config.yaml not found in $flake"
-		return 1
-	fi
-	recipients=$(yq --raw-output '[.["master-age-recipients"] // empty] | flatten(1) | join(",")' "$flake/config.yaml")
-	if [[ -z $recipients ]]; then
-		echo >&2 "Missing master-age-recipient in $flake/config.yaml"
-		return 1
-	fi
-	echo "$recipients"
+find_group_json() {
+	find_flake
+
+	local fn
+	fn=$(
+		cat <<-EOF
+			{ self, nodeGroups, ... }:
+			let
+				inherit (self) inputs;
+				inherit (inputs.nixpkgs-unstable) lib;
+				lib' = inputs.nixverse-unstable.lib;
+				group = nodeGroups.\${"$node_group"} or null;
+			in
+			if group == null then
+				null
+			else
+				lib'.filterRecursive
+					(n: v: !(lib.isFunction v))
+					group
+		EOF
+	)
+	local filter
+	filter=$(
+		cat <<-EOF
+			if . == null then
+				"Unknown group $node_group\n" | halt_error(1)
+			else
+				.
+			end
+		EOF
+	)
+	group_json=$(
+		nix eval \
+			--json \
+			--no-warn-dirty \
+			--impure "$flake#." \
+			--apply "$fn" \
+			--show-trace |
+			jq "$filter"
+	)
 }
 
-node_age_recipient() {
-	ssh-to-age -i "$node_dir/fs/etc/ssh/ssh_host_ed25519_key.pub"
-}
-
-node_age_key() {
-	sops decrypt "$node_dir/secrets/ssh_host_ed25519_key" | ssh-to-age -private-key
-}
-
-build_node() {
-	f=$(find_node_file -r Makefile)
-	if [[ -z $f ]]; then
-		if [[ -e $flake/Makefile ]]; then
-			f=$flake/Makefile
-		else
-			return
-		fi
-	fi
-	local dir
-	dir=$(dirname "$f")
-	local recipients
-	recipients=$(master_age_recipients)
-
-	NODE_RELEASE=$node_release \
-		NODE_OS=$node_os \
+build_nixverse_node() {
+	find_node
+	NODE_OS=$node_os \
 		NODE_CHANNEL=$node_channel \
 		NODE_NAME=$node_name \
 		NODE_GROUP=$node_group \
-		MASTER_AGE_RECIPIENTS=$recipients \
+		NODE_DIR=$node_dir \
+		NODE_BASE_DIR=$node_base_dir \
+		NODE_BUILD_DIR=$node_build_dir \
+		NODE_BUILD_BASE_DIR=$node_build_base_dir \
+		BUILD_DIR=$flake/build \
+		TOP_DIR=$flake \
 		make \
-		-C "$dir" \
+		-C "$flake" \
 		-f @out@/share/nixverse/Makefile \
 		--no-builtin-rules \
 		--no-builtin-variables \
 		--warn-undefined-variables \
 		"$@"
-	NODE_RELEASE=$node_release \
-		NODE_OS=$node_os \
-		NODE_CHANNEL=$node_channel \
-		NODE_NAME=$node_name \
-		NODE_GROUP=$node_group \
-		make \
-		-C "$dir" \
-		--no-builtin-rules \
-		--no-builtin-variables \
-		--warn-undefined-variables \
-		"$@"
 }
 
-decrypt_ssh_host_keys() {
-	(
-		umask a=,u=rw
-		for f in "$node_dir/secrets"/ssh_host_*_key; do
-			sops decrypt --output "$node_dir/fs/etc/ssh/$(basename "$f")" "$f"
-		done
+#shellcheck disable=SC2120
+build_node() {
+	build_nixverse_node ssh-host-keys
+
+	local f
+	local files=()
+	if [[ -n $node_group ]]; then
+		files+=("$node_base_dir/common/Makefile" "$node_dir/Makefile")
+	else
+		files+=("$node_dir/Makefile")
+	fi
+	local dir
+	for f in "${files[@]}"; do
+		if [[ ! -e $f ]]; then
+			continue
+		fi
+
+		dir=$(dirname "$f")
+		NODE_OS=$node_os \
+			NODE_CHANNEL=$node_channel \
+			NODE_NAME=$node_name \
+			NODE_GROUP=$node_group \
+			NODE_DIR=$node_dir \
+			NODE_BASE_DIR=$node_base_dir \
+			NODE_BUILD_DIR=$node_build_dir \
+			NODE_BUILD_BASE_DIR=$node_build_base_dir \
+			BUILD_DIR=$flake/build \
+			TOP_DIR=$flake \
+			make \
+			-C "$dir" \
+			--no-builtin-rules \
+			--no-builtin-variables \
+			--warn-undefined-variables \
+			"$@"
+	done
+}
+
+node_age_recipient() {
+	find_node
+	local pubkey=$node_dir/fs/etc/ssh/ssh_host_ed25519_key.pub
+	if [[ ! -e $pubkey ]]; then
+		build_nixverse_node "$pubkey"
+	fi
+	ssh-to-age -i "$pubkey"
+}
+
+node_age_key() {
+	find_node
+	local key=$node_build_dir/secrets/fs/etc/ssh/ssh_host_ed25519_key
+	if [[ ! -e $key ]]; then
+		build_nixverse_node "$key"
+	fi
+	ssh-to-age -private-key -i "$key"
+}
+
+rsync_fs() {
+	local target_dir=${1:-/}
+	find_node
+
+	local dirs=()
+	if [[ -n $node_group ]]; then
+		if [[ -d "$node_base_dir/common/fs" ]]; then
+			dirs+=("$node_base_dir/common/fs")
+		fi
+	fi
+	if [[ -d "$node_dir/fs" ]]; then
+		dirs+=("$node_dir/fs")
+	fi
+	if [[ -d "$node_build_dir/fs" ]]; then
+		dirs+=("$node_build_dir/fs")
+	fi
+	rsync \
+		--quiet \
+		--recursive \
+		--perms \
+		--times \
+		"${dirs[@]/%//}" \
+		"${dst:+$dst:}$target_dir"
+}
+
+rsync_home_fs() {
+	find_node
+	if [[ ! -d "$node_dir/home" ]]; then
+		return
+	fi
+
+	local target_dir=${1-}
+
+	find "$node_dir/home" \
+		-mindepth 2 \
+		-maxdepth 2 \
+		-name fs \
+		-type d | (
+		read -r dir
+		user=$(basename "$(dirname "$dir")")
+		case $node_os in
+		darwin)
+			if [[ $user = root ]]; then
+				home=/var/root
+				uid=0
+				gid=0
+			else
+				home=$(dscl . -read "/Users/$user" NFSHomeDirectory)
+				home=${home#NFSHomeDirectory: }
+				uid=$(dscl . -read "/Users/$user" UniqueID)
+				uid=${uid#UniqueID: }
+				gid=$(dscl . -read "/Users/$user" PrimaryGroupID)
+				gid=${gid#PrimaryGroupID: }
+			fi
+			sudo rsync \
+				--quiet \
+				--recursive \
+				--perms \
+				--times \
+				--chown "$uid:$gid" \
+				--numeric-ids \
+				"$dir/" \
+				"${dst:+$dst:}$target_dir$home/"
+			;;
+		esac
 	)
 }
 
