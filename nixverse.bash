@@ -196,9 +196,9 @@ cmd_root-secrets_encrypt() {
 		in_file=/dev/stdin
 	fi
 	local recipients
-	recipients=$(cmd_config '[.["root-age-recipients"] // empty] | flatten(1) | join(",")')
+	recipients=$(cmd_config '[.["root-secrets-recipients"] // empty] | flatten(1) | join(",")')
 	if [[ -z $recipients ]]; then
-		echo >&2 "Missing root-age-recipient in $flake/config.yaml"
+		echo >&2 "Missing root-secrets-recipient in $flake/config.yaml"
 		return 1
 	fi
 	local args=()
@@ -281,7 +281,7 @@ ${node_name}:
   name: value
 EOF
 			)
-			cmd_root-secrets_encrypt -t yaml "$f"
+			cmd_root-secrets_encrypt "$f"
 		fi
 		if sops --indent 2 "$f"; then
 			:
@@ -295,7 +295,7 @@ EOF
 		local tmp
 		tmp=$(mktemp)
 		#shellcheck disable=SC2016
-		sops decrypt "$f" |
+		cmd_root-secrets_decrypt "$f" - |
 			yq --yaml-output --indent 2 --arg n "$node_name" '(.common // {}) * (.[$n] // {})' >"$tmp"
 		#shellcheck disable=SC2064
 		trap "rm -f '$tmp'" EXIT
@@ -320,7 +320,7 @@ EOF
 name: value
 EOF
 			)
-			cmd_secrets_encrypt -t yaml "$f"
+			cmd_secrets_encrypt "$f"
 		fi
 		if sops --indent 2 "$f"; then
 			return
