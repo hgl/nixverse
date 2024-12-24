@@ -75,6 +75,16 @@ cmd_node_bootstrap() {
 }
 
 cmd_node_deploy() {
+	local remote_build=1
+	OPTIND=1
+	while getopts 'R' opt; do
+		case $opt in
+		R) remote_build='' ;;
+		?) exit 1 ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+
 	local node_name=$1
 	local dst=${2-}
 
@@ -89,6 +99,11 @@ cmd_node_deploy() {
 				--target-host "$dst"
 				--use-remote-sudo
 				--fast
+			)
+		fi
+		if [[ -z $remote_build ]]; then
+			args+=(
+				--build-host ''
 			)
 		fi
 		nixos-rebuild switch \
