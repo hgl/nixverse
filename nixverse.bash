@@ -335,9 +335,11 @@ EOF
 name: value
 EOF
 			)
-			cmd_secrets_encrypt "$f"
+			cmd_secrets_encrypt "$node_name" "$f"
 		fi
-		if sops --indent 2 "$f"; then
+		local key
+		key=$(node_age_key)
+		if SOPS_AGE_KEY=$key sops --indent 2 "$f"; then
 			return
 		elif [[ $? = 200 ]]; then
 			return
