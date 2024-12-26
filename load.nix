@@ -6,15 +6,26 @@
 flake:
 let
   flakeSelf = {
-    nixosModules = importDir "${flake}/modules/nixos";
-    darwinModules = importDir "${flake}/modules/darwin";
-    homeManagerModules = importDir "${flake}/modules/homeManager";
+    nixosModules =
+      importDir "${flake}/modules/nixos"
+      // lib.optionalAttrs (flake.inputs ? secrets) (importDir "${flake.inputs.secrets}/modules/nixos");
+    darwinModules =
+      importDir "${flake}/modules/darwin"
+      // lib.optionalAttrs (flake.inputs ? secrets) (importDir "${flake.inputs.secrets}/modules/darwin");
+    homeManagerModules =
+      importDir "${flake}/modules/homeManager"
+      // lib.optionalAttrs (flake.inputs ? secrets) (
+        importDir "${flake.inputs.secrets}/modules/homeManager"
+      );
     packages = lib'.forAllSystems (
       system:
       let
         pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
       in
       lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs")
+      // lib.optionalAttrs (flake.inputs ? secrets) (
+        lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake.inputs.secrets}/pkgs")
+      )
     );
     nixosConfigurations = configurations.nixos;
     darwinConfigurations = configurations.darwin;
@@ -52,6 +63,8 @@ let
         entity@{
           inputs,
           node,
+          nodeDir,
+          nodeBaseDir,
           configurationPath,
           ...
         }:
@@ -70,18 +83,37 @@ let
             .${node.os};
         in
         lib.nameValuePair node.name (mkSystem {
-          specialArgs = {
-            inherit (entity) inputs node lib';
-            modules' = modules;
-            hmModules' = flakeSelf.homeManagerModules;
-          };
+          specialArgs =
+            {
+              inherit (entity) inputs node lib';
+              modules' = modules;
+              hmModules' = flakeSelf.homeManagerModules;
+            }
+            // lib.optionalAttrs (flake.inputs ? secrets) {
+              secrets =
+                {
+                  inherit (flake.inputs.secrets) outPath;
+                }
+                // lib.optionalAttrs
+                  (node.group != "" && lib.pathExists "${flake.inputs.secrets}/${nodeBaseDir}/common")
+                  {
+                    common = "${flake.inputs.secrets}/${nodeBaseDir}/common";
+                  }
+                // lib.optionalAttrs (lib.pathExists "${flake.inputs.secrets}/${nodeDir}") {
+                  node = "${flake.inputs.secrets}/${nodeDir}";
+                };
+            };
           modules = [
             (
               { config, pkgs, ... }:
               {
                 _module.args =
                   {
-                    pkgs' = lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs");
+                    pkgs' =
+                      lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs")
+                      // lib.optionalAttrs (flake.inputs ? secrets) (
+                        lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake.inputs.secrets}/pkgs")
+                      );
                   }
                   // lib.optionalAttrs (node.channel != "unstable" && flake.inputs ? nixpkgs-unstable) {
                     pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform};
@@ -119,6 +151,12 @@ let
         ${name} = loadEntrypoint {
           inherit name base;
           entrypoint = import "${flake}/${base}/node.nix";
+          secretsEntrypoint =
+            if flake.inputs ? secrets && lib.pathExists "${flake.inputs.secrets}/${base}/node.nix" then
+              import "${flake.inputs.secrets}/${base}/node.nix"
+            else
+              # TODO check if user has mistakenly used nodes.nix
+              { };
           group = "";
         };
       };
@@ -128,6 +166,12 @@ let
             name = null;
             inherit base;
             entrypoint = import "${flake}/${base}/nodes.nix";
+            secretsEntrypoint =
+              if flake.inputs ? secrets && lib.pathExists "${flake.inputs.secrets}/${base}/nodes.nix" then
+                import "${flake.inputs.secrets}/${base}/nodes.nix"
+              else
+                # TODO check if user has mistakenly used node.nix
+                { };
             group = name;
           };
         };
@@ -137,6 +181,7 @@ let
           name,
           base,
           entrypoint,
+          secretsEntrypoint,
           group,
         }:
         if group == "" then
@@ -145,13 +190,16 @@ let
               name
               base
               entrypoint
+              secretsEntrypoint
               group
               ;
             common = null;
+            secretsCommon = null;
           }
         else
           let
             common = entrypoint.common or { };
+            secretsCommon = secretsEntrypoint.common or { };
           in
           lib.mapAttrs (
             name: value:
@@ -159,10 +207,12 @@ let
               inherit
                 name
                 common
+                secretsCommon
                 base
                 group
                 ;
               entrypoint = value;
+              secretsEntrypoint = secretsEntrypoint.${name} or { };
             }
           ) (lib.removeAttrs entrypoint [ "common" ]);
       loadNodeEntrypoint =
@@ -170,7 +220,9 @@ let
           name,
           base,
           entrypoint,
+          secretsEntrypoint,
           common,
+          secretsCommon,
           group,
         }:
         let
@@ -236,7 +288,9 @@ let
               "${base}/common/configuration.nix"
             else
               abort "Missing configuration.nix for node ${name}";
-          common' = callWithOptionalArgs common nodeArgs;
+          commonAttrs = lib.recursiveUpdate (callWithOptionalArgs common nodeArgs) (
+            callWithOptionalArgs secretsCommon nodeArgs
+          );
           nodeArgs =
             {
               inherit (inputs.nixpkgs) lib;
@@ -244,27 +298,37 @@ let
               lib' = nodeLib;
             }
             // lib.optionalAttrs (group != "") {
-              common = common';
+              common = commonAttrs;
             };
-          raw = lib.recursiveUpdate (lib.optionalAttrs (group != "") common') (
-            callWithOptionalArgs entrypoint nodeArgs
+          entrypointAttrs = lib.recursiveUpdate (lib.optionalAttrs (group != "") commonAttrs) (
+            lib.recursiveUpdate (callWithOptionalArgs entrypoint nodeArgs) (
+              callWithOptionalArgs secretsEntrypoint nodeArgs
+            )
           );
           node =
-            assert lib.assertMsg (raw ? os) "Missing attribute \"os\"";
-            assert lib.assertMsg (raw ? channel) "Missing attribute \"channel\"";
-            assert lib.assertMsg (!(raw ? name)) "Must not specify attribute \"name\" for node ${name}";
-            assert lib.assertMsg (!(raw ? group)) "Must not specify attribute \"group\" for node ${name}";
-            raw
+            assert lib.assertMsg (entrypointAttrs ? os) "Missing attribute \"os\"";
+            assert lib.assertMsg (entrypointAttrs ? channel) "Missing attribute \"channel\"";
+            assert lib.assertMsg (
+              !(entrypointAttrs ? name)
+            ) "Must not specify attribute \"name\" for node ${name}";
+            assert lib.assertMsg (
+              !(entrypointAttrs ? group)
+            ) "Must not specify attribute \"group\" for node ${name}";
+            entrypointAttrs
             // {
               inherit name group;
-              dir = nodeDir;
-              baseDir = base;
             };
           inherit (node) os channel;
         in
         {
-          inherit inputs node configurationPath;
+          inherit
+            inputs
+            node
+            nodeDir
+            configurationPath
+            ;
           lib' = nodeLib;
+          nodeBaseDir = base;
         };
     in
     loadEntities "nodes";

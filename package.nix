@@ -17,7 +17,7 @@
 runCommand "nixverse" { } ''
   mkdir -p $out/{bin,share/nixverse}
   cp ${./partition.bash} $out/share/nixverse/partition
-  cp ${./Makefile} $out/share/nixverse/Makefile
+  cp ${./secrets.mk} $out/share/nixverse/secrets.mk
   substitute ${./nixverse.bash} $out/bin/nixverse \
     --subst-var-by shell "${lib.getExe bash}" \
     --subst-var-by path ${
