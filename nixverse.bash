@@ -69,7 +69,6 @@ cmd_node_bootstrap() {
 		"${args[@]}" \
 		"$dst"
 	rsync_fs /mnt
-	rsync_home_fs /mnt
 }
 
 cmd_node_deploy() {
@@ -86,7 +85,6 @@ cmd_node_deploy() {
 	local node_name=$1
 	local dst=${2-}
 
-	find_secrets
 	build_node
 
 	case $node_os in
@@ -117,7 +115,6 @@ cmd_node_deploy() {
 	esac
 
 	rsync_fs
-	rsync_home_fs
 }
 
 cmd_node_rollback() {
@@ -862,8 +859,8 @@ node_age_key() {
 
 rsync_fs() {
 	local target_dir=${1:-/}
-	find_node
 
+	find_node
 	local dirs=()
 	if [[ -n $node_group ]]; then
 		if [[ -d "$node_base_dir/common/fs" ]]; then
@@ -885,49 +882,42 @@ rsync_fs() {
 			"${dirs[@]/%//}" \
 			"${dst:+$dst:}$target_dir"
 	fi
-}
 
-rsync_home_fs() {
-	find_node
-	if [[ ! -d "$node_dir/home" ]]; then
-		return
+	if [[ -d "$node_dir/home" ]]; then
+		find "$node_dir/home" \
+			-mindepth 2 \
+			-maxdepth 2 \
+			-name fs \
+			-type d | (
+			read -r dir
+			user=$(basename "$(dirname "$dir")")
+			case $node_os in
+			darwin)
+				if [[ $user = root ]]; then
+					home=/var/root
+					uid=0
+					gid=0
+				else
+					home=$(dscl . -read "/Users/$user" NFSHomeDirectory)
+					home=${home#NFSHomeDirectory: }
+					uid=$(dscl . -read "/Users/$user" UniqueID)
+					uid=${uid#UniqueID: }
+					gid=$(dscl . -read "/Users/$user" PrimaryGroupID)
+					gid=${gid#PrimaryGroupID: }
+				fi
+				sudo rsync \
+					--quiet \
+					--recursive \
+					--perms \
+					--times \
+					--chown "$uid:$gid" \
+					--numeric-ids \
+					"$dir/" \
+					"${dst:+$dst:}$target_dir$home/"
+				;;
+			esac
+		)
 	fi
-
-	local target_dir=${1-}
-
-	find "$node_dir/home" \
-		-mindepth 2 \
-		-maxdepth 2 \
-		-name fs \
-		-type d | (
-		read -r dir
-		user=$(basename "$(dirname "$dir")")
-		case $node_os in
-		darwin)
-			if [[ $user = root ]]; then
-				home=/var/root
-				uid=0
-				gid=0
-			else
-				home=$(dscl . -read "/Users/$user" NFSHomeDirectory)
-				home=${home#NFSHomeDirectory: }
-				uid=$(dscl . -read "/Users/$user" UniqueID)
-				uid=${uid#UniqueID: }
-				gid=$(dscl . -read "/Users/$user" PrimaryGroupID)
-				gid=${gid#PrimaryGroupID: }
-			fi
-			sudo rsync \
-				--quiet \
-				--recursive \
-				--perms \
-				--times \
-				--chown "$uid:$gid" \
-				--numeric-ids \
-				"$dir/" \
-				"${dst:+$dst:}$target_dir$home/"
-			;;
-		esac
-	)
 }
 
 cmd() {
