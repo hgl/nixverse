@@ -5,6 +5,8 @@
 }:
 flake:
 let
+  rawPkgs = importDir "${flake}/pkgs";
+  rawSecretPkgs = importDir "${flake.inputs.secrets}/pkgs";
   flakeSelf = {
     nixosModules =
       importDir "${flake}/modules/nixos"
@@ -22,9 +24,9 @@ let
       let
         pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
       in
-      lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs")
+      lib.mapAttrs (name: v: pkgs.callPackage v { }) rawPkgs
       // lib.optionalAttrs (flake.inputs ? secrets) (
-        lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake.inputs.secrets}/pkgs")
+        lib.mapAttrs (name: v: pkgs.callPackage v { }) rawSecretPkgs
       )
     );
     nixosConfigurations = configurations.nixos;
@@ -110,9 +112,9 @@ let
                 _module.args =
                   {
                     pkgs' =
-                      lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake}/pkgs")
+                      lib.mapAttrs (name: v: pkgs.callPackage v { }) rawPkgs
                       // lib.optionalAttrs (flake.inputs ? secrets) (
-                        lib.mapAttrs (name: v: pkgs.callPackage v { }) (importDir "${flake.inputs.secrets}/pkgs")
+                        lib.mapAttrs (name: v: pkgs.callPackage v { }) rawSecretPkgs
                       );
                   }
                   // lib.optionalAttrs (node.channel != "unstable" && flake.inputs ? nixpkgs-unstable) {
