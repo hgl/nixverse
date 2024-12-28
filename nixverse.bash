@@ -463,14 +463,16 @@ find_flake() {
 		return
 	fi
 	if [[ -n ${FLAKE_DIR-} ]]; then
+		if [[ ! -e $FLAKE_DIR/flake.nix ]]; then
+			echo >&2 "FLAKE_DIR is not a flake directory: $FLAKE_DIR"
+			return 1
+		fi
 		flake_dir=$FLAKE_DIR
-	else
-		flake_dir=$PWD
+		return
 	fi
-	local f
+	flake_dir=$PWD
 	while true; do
-		f=$flake_dir/flake.nix
-		if [[ -e $f ]]; then
+		if [[ -e $flake_dir/flake.nix ]]; then
 			build_dir=$flake_dir/build
 			return
 		fi
