@@ -112,7 +112,40 @@ let
                 _module.args =
                   {
                     pkgs' =
-                      lib.mapAttrs (name: v: pkgs.callPackage v { }) rawPkgs
+                      lib.optionalAttrs (node ? flake && lib.isPath node.flake) {
+                        nixverse =
+                          pkgs.runCommand "nixverse"
+                            {
+                              meta.mainProgram = "nixverse";
+                              nativeBuildInputs = [ pkgs.makeWrapper ];
+                            }
+                            ''
+                              makeWrapper ${lib.getExe self.packages.${config.nixpkgs.hostPlatform}.default} $out/bin/nixverse \
+                                --set FLAKE_DIR '${node.flake}'
+                            '';
+                        config =
+                          pkgs.runCommand "config"
+                            {
+                              meta.mainProgram = "config";
+                            }
+                            ''
+                              substitute ${./config.bash} $out/bin/config \
+                                --subst-var-by shell ${lib.getExe pkgs.bash} \
+                                --subst-var-by flake '${node.flake}' \
+                                --subst-var-by node_name '${node.name}' \
+                                --subst-var-by node_os '${node.os}' \
+                                --subst-var-by path ${
+                                  lib.makeBinPath (
+                                    with pkgs;
+                                    [
+                                      nixos-rebuild
+                                      darwin-rebuild
+                                    ]
+                                  )
+                                }
+                            '';
+                      }
+                      // lib.mapAttrs (name: v: pkgs.callPackage v { }) rawPkgs
                       // lib.optionalAttrs (flake.inputs ? secrets) (
                         lib.mapAttrs (name: v: pkgs.callPackage v { }) rawSecretPkgs
                       );
