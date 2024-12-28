@@ -47,7 +47,7 @@ cmd_node_bootstrap() {
 			BOOT_TYPE='$boot_type'
 			BOOT_DEVICE='$boot_device'
 			ROOT_FORMAT='$root_format'
-			$(<@out@/share/nixverse/partition)
+			$(<@out@/libexec/nixverse/partition)
 		"
 	fi
 	args=(
@@ -736,7 +736,7 @@ build_node_secrets() {
 		NODE_SECRETS_COMMON_DIR=$node_secrets_common_dir \
 		make \
 		-C "$flake_dir" \
-		-f @out@/share/nixverse/secrets.mk \
+		-f @out@/lib/nixverse/secrets.mk \
 		--no-builtin-rules \
 		--no-builtin-variables \
 		--warn-undefined-variables \
