@@ -6,11 +6,12 @@ SHELL := bash
 
 .PHONY: all
 
-ssh_host_key_types := ed25519 rsa
-all: $(foreach key,$(ssh_host_key_types:%=ssh_host_%_key),$(NODE_SECRETS_DIR)/$(key) $(NODE_SECRETS_DIR)/$(key).pub $(NODE_BUILD_DIR)/fs/etc/ssh/$(key))
-.NOTINTERMEDIATE: $(NODE_SECRETS_DIR)/ssh_host_%_key $(NODE_SECRETS_DIR)/ssh_host_%_key.pub
+ifeq ($(NODE_OS),nixos)
+  ssh_host_key_types := ed25519 rsa
+  all: $(foreach key,$(ssh_host_key_types:%=ssh_host_%_key),$(NODE_SECRETS_DIR)/$(key) $(NODE_SECRETS_DIR)/$(key).pub $(NODE_BUILD_DIR)/fs/etc/ssh/$(key))
+  .NOTINTERMEDIATE: $(NODE_SECRETS_DIR)/ssh_host_%_key $(NODE_SECRETS_DIR)/ssh_host_%_key.pub
 
-$(NODE_SECRETS_DIR)/ssh_host_%_key $(NODE_SECRETS_DIR)/ssh_host_%_key.pub &: | $(NODE_SECRETS_DIR)
+  $(NODE_SECRETS_DIR)/ssh_host_%_key $(NODE_SECRETS_DIR)/ssh_host_%_key.pub &: | $(NODE_SECRETS_DIR)
 	@key=$(NODE_SECRETS_DIR)/ssh_host_$*_key
 	if [[ -e $$key ]]; then
 		ssh-keygen -yf "$$key" | cut -d ' ' -f-2 >"$$key.pub"
@@ -33,8 +34,9 @@ $(NODE_SECRETS_DIR)/ssh_host_%_key $(NODE_SECRETS_DIR)/ssh_host_%_key.pub &: | $
 		--in-place \
 		"$$key"
 
-$(NODE_BUILD_DIR)/fs/etc/ssh/ssh_host_%_key: $(NODE_SECRETS_DIR)/ssh_host_%_key | $(NODE_BUILD_DIR)/fs/etc/ssh
+  $(NODE_BUILD_DIR)/fs/etc/ssh/ssh_host_%_key: $(NODE_SECRETS_DIR)/ssh_host_%_key | $(NODE_BUILD_DIR)/fs/etc/ssh
 	sops decrypt --output $@ $<
 
-$(NODE_SECRETS_DIR) $(NODE_BUILD_DIR)/fs/etc/ssh:
+  $(NODE_SECRETS_DIR) $(NODE_BUILD_DIR)/fs/etc/ssh:
 	mkdir -p $@
+endif

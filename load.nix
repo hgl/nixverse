@@ -112,7 +112,7 @@ let
                 _module.args =
                   {
                     pkgs' =
-                      lib.optionalAttrs (node ? flake && lib.isPath node.flake) {
+                      lib.optionalAttrs (node ? flake) {
                         nixverse =
                           pkgs.runCommand "nixverse"
                             {

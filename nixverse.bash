@@ -1,5 +1,5 @@
 #!@shell@
-set -euo pipefail
+set -xeuo pipefail
 
 PATH=@path@:$PATH
 
