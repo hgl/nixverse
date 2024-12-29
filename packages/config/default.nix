@@ -23,4 +23,5 @@ runCommand "config"
           darwin-rebuild
         ]
       }
+    chmod a=rx $out/bin/config
   ''
