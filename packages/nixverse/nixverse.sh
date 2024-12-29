@@ -921,11 +921,10 @@ rsync_fs() {
 	local uid
 	local args=()
 	if [[ ${#dirs[@]} != 0 ]]; then
-		uid=$(id --user)
-		if [[ $uid = 0 ]]; then
-			set --
-		else
+		if [[ -z $ssh_dst ]] && uid=$(id --user) && [[ $uid != 0 ]]; then
 			set -- sudo
+		else
+			set --
 		fi
 		"$@" rsync \
 			--quiet \
@@ -977,11 +976,10 @@ rsync_fs() {
 				return 1
 				;;
 			esac
-			uid=$(id --user)
-			if [[ $uid = 0 ]]; then
-				set --
-			else
+			if [[ -z $ssh_dst ]] && uid=$(id --user) && [[ $uid != 0 ]]; then
 				set -- sudo
+			else
+				set --
 			fi
 			"$@" rsync \
 				--quiet \
