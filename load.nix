@@ -120,7 +120,7 @@ let
                   in
                   {
                     pkgs' =
-                      lib.optionalAttrs (node ? flake) {
+                      lib.optionalAttrs (node ? flakeSource) {
                         inherit nixverse;
                         # TOOD check input nix-darwin exists if node.os is darwin
                         config = pkgs.callPackage (import ./packages/config node) {

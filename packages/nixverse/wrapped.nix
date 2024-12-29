@@ -12,5 +12,5 @@ runCommand "nixverse"
   }
   ''
     makeWrapper ${lib.getExe nixverse} $out/bin/nixverse \
-      --set FLAKE_DIR '${node.flake}'
+      --set FLAKE_DIR '${node.flakeSource}'
   ''
