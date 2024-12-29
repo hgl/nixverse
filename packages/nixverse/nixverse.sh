@@ -483,6 +483,7 @@ find_flake() {
 			return 1
 		fi
 		flake_dir=$FLAKE_DIR
+		build_dir=$flake_dir/build
 		return
 	fi
 	flake_dir=$PWD
