@@ -860,7 +860,7 @@ node_age_key() {
 }
 
 rsync_fs() {
-	local target_dir=${1:-/}
+	local target_dir=${1-}
 
 	find_node
 	local dirs=()
@@ -882,7 +882,7 @@ rsync_fs() {
 			--perms \
 			--times \
 			"${dirs[@]/%//}" \
-			"${dst:+$dst:}$target_dir"
+			"${dst:+$dst:}${target_dir:-/}"
 	fi
 
 	if [[ -d "$node_dir/home" ]]; then
