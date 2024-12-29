@@ -1,6 +1,6 @@
 #!@shell@
 # shellcheck shell=bash
-set -euo pipefail
+set -xeuo pipefail
 
 PATH=@path@:$PATH
 
@@ -537,10 +537,6 @@ find_node() {
 }
 
 find_secrets() {
-	if [[ ${secrets_dir-.} != . ]]; then
-		return
-	fi
-
 	local optional=''
 	OPTIND=1
 	while getopts 'o' opt; do
@@ -551,42 +547,75 @@ find_secrets() {
 	done
 	shift $((OPTIND - 1))
 
+	if [[ ${secrets_dir-.} != . ]]; then
+		if [[ -z $secrets_dir ]] && [[ -z $optional ]]; then
+			echo >&2 "Missing \".secrets.directory\": $flake_dir/config.json"
+			return 1
+		fi
+		return
+	fi
+
 	find_flake
+	secrets_dir=''
+	if [[ -e $flake_dir/config.json ]]; then
+		secrets_dir=$(jq --raw-output --arg conf "$flake_dir/config.json" '
+			.secrets.directory // empty |
+			if type != "string" or . == "" then
+				"\".secrets.directory\" must be a non-empty string: \($conf)" | halt_error(1)
+			else
+				.
+			end
+		' "$flake_dir/config.json")
+		if [[ $secrets_dir = /* ]]; then
+			secrets_dir=$(readlink -f "$secrets_dir")
+		else
+			secrets_dir=$(readlink -f "$flake_dir/$secrets_dir")
+		fi
+	fi
 	local input_exists
 	input_exists=$(nix flake metadata "$flake_dir" --json |
 		jq 'if .locks.nodes.secrets then 1 else empty end')
-	if [[ -z $input_exists ]]; then
+	if [[ -z $secrets_dir ]] && [[ -z $input_exists ]]; then
 		if [[ -z $optional ]]; then
-			echo >&2 "Missing secrets directory configuration in $flake_dir/config.json"
+			echo >&2 "Missing \".secrets.directory\": $flake_dir/config.json"
 			return 1
 		fi
-		secrets_dir=''
+		return
 	else
+		if [[ -z $input_exists ]]; then
+			echo >&2 "\"secrets\" inpu is specified in flake.nix, but \".secrets.directory\" is unspecified in config.json: $flake_dir"
+			return 1
+		fi
+		if [[ -z $input_exists ]]; then
+			echo >&2 "\".secrets.directory\" is specified in config.json, but no \"secrets\" input is specified in flake.nix: $flake_dir"
+			return 1
+		fi
 		nix flake update secrets --flake "$flake_dir"
-		secrets_dir=$(nix eval --raw "$flake_dir#self.inputs.secrets")
 	fi
 }
 
 find_node_by_secret_path() {
-	find_secrets
-
 	secret_path=$(readlink -f "$1")
+
+	find_secrets -o
 
 	node_name=''
 	node_group=''
-	secret_base_dir=${secret_path#"$secrets_dir/"}
-	if [[ $secret_base_dir = "$secrets_dir" ]]; then
-		echo >&2 "Secret is not inside the secrets directory: $secret_path"
-		return 1
-	else
-		secret_path=$secret_base_dir
+	local p
+	if p=${secret_path#"$flake_dir/"} && [[ $p != "$secret_path" ]]; then
+		secret_path=$p
 		secret_base_dir=$flake_dir
+	elif [[ -n $secrets_dir ]] && p=${secret_path#"$secrets_dir/"} && [[ $p != "$secret_path" ]]; then
+		secret_path=$p
+		secret_base_dir=$flake_dir
+	else
+		echo >&2 "Secret is not inside a flake directory"
+		return 1
 	fi
-
-	if [[ $secret_path = "${secret_path#nodes/}" ]]; then
+	if p=${secret_path#nodes/} && [[ $p != "$secret_path" ]]; then
 		return
 	fi
-	secret_path=${secret_path#nodes/}
+	secret_path=$p
 	secret_base_dir=$secret_base_dir/nodes
 	node_name=${secret_path%%/*}
 	secret_path=${secret_path#"$node_name/"}
@@ -599,7 +628,7 @@ find_node_by_secret_path() {
 			find_node
 		fi
 	else
-		echo >&2 "File is inside nodes directory, but not in a node directory: $secret_path"
+		echo >&2 "Secret is inside a node directory that does not have either node.nix or nodes.nix: $secret_path"
 		return 1
 	fi
 }
@@ -791,9 +820,9 @@ encrypt_root_secrets() {
 	local out_file=${3-}
 
 	local recipients
-	recipients=$(config '.rootSecretsRecipients // empty | [.] | flatten(1) | join(",")')
+	recipients=$(config '.secrets.rootRecipients // empty | [.] | flatten(1) | join(",")')
 	if [[ -z $recipients ]]; then
-		echo >&2 "Missing \"rootSecretsRecipients\" in $flake_dir/config.json"
+		echo >&2 "Missing \".secrets.rootRecipients\": $flake_dir/config.json"
 		return 1
 	fi
 	local args=()
