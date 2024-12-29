@@ -1,6 +1,6 @@
 #!@shell@
 # shellcheck shell=bash
-set -xeuo pipefail
+set -euo pipefail
 
 PATH=@path@:$PATH
 
