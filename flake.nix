@@ -29,8 +29,8 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          nixverse = pkgs.callPackage (import ./package.nix) {
-            nixos-anywhere = self.inputs.nixos-anywhere.packages.${system}.default;
+          nixverse = pkgs.callPackage (import ./packages/nixverse) {
+            nixos-anywhere = self.inputs.nixos-anywhere.packages.${system}.nixos-anywhere;
             darwin-rebuild = self.inputs.nix-darwin.packages.${system}.darwin-rebuild;
           };
         in
@@ -46,7 +46,7 @@
         in
         {
           default = pkgs.mkShell {
-            packages = [ self.packages.${system}.default ];
+            packages = [ self.packages.${system}.nixverse ];
           };
         }
       );

@@ -110,40 +110,19 @@ let
               { config, pkgs, ... }:
               {
                 _module.args =
+                  let
+                    inherit (config.nixpkgs.hostPlatform) system;
+                  in
                   {
                     pkgs' =
                       lib.optionalAttrs (node ? flake) {
-                        nixverse =
-                          pkgs.runCommand "nixverse"
-                            {
-                              meta.mainProgram = "nixverse";
-                              nativeBuildInputs = [ pkgs.makeWrapper ];
-                            }
-                            ''
-                              makeWrapper ${lib.getExe self.packages.${config.nixpkgs.hostPlatform}.default} $out/bin/nixverse \
-                                --set FLAKE_DIR '${node.flake}'
-                            '';
-                        config =
-                          pkgs.runCommand "config"
-                            {
-                              meta.mainProgram = "config";
-                            }
-                            ''
-                              substitute ${./config.bash} $out/bin/config \
-                                --subst-var-by shell ${lib.getExe pkgs.bash} \
-                                --subst-var-by flake '${node.flake}' \
-                                --subst-var-by node_name '${node.name}' \
-                                --subst-var-by node_os '${node.os}' \
-                                --subst-var-by path ${
-                                  lib.makeBinPath (
-                                    with pkgs;
-                                    [
-                                      nixos-rebuild
-                                      darwin-rebuild
-                                    ]
-                                  )
-                                }
-                            '';
+                        nixverse = pkgs.callPackage (import ./packages/nixverse/wrapped.nix node) {
+                          nixverse = self.packages.${system}.nixverse;
+                        };
+                        # TOOD check input nix-darwin exists if node.os is darwin
+                        config = pkgs.callPackage (import ./packages/config node) {
+                          darwin-rebuild = inputs.nix-darwin.packages.${system}.darwin-rebuild;
+                        };
                       }
                       // lib.mapAttrs (name: v: pkgs.callPackage v { }) rawPkgs
                       // lib.optionalAttrs (flake.inputs ? secrets) (
@@ -151,7 +130,7 @@ let
                       );
                   }
                   // lib.optionalAttrs (node.channel != "unstable" && flake.inputs ? nixpkgs-unstable) {
-                    pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform};
+                    pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
                   };
                 networking.hostName = lib.mkDefault node.name;
                 # Needed for syncing fs when deploying
