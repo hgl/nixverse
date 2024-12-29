@@ -20,9 +20,9 @@ runCommand "nixverse"
   }
   ''
     mkdir -p $out/{bin,libexec/nixverse,lib/nixverse}
-    cp ${./partition.bash} $out/libexec/nixverse/partition
+    cp ${./partition.sh} $out/libexec/nixverse/partition
     cp ${./secrets.mk} $out/lib/nixverse/secrets.mk
-    substitute ${./nixverse.bash} $out/bin/nixverse \
+    substitute ${./nixverse.sh} $out/bin/nixverse \
       --subst-var-by shell ${lib.getExe bash} \
       --subst-var-by out $out \
       --subst-var-by path ${

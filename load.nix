@@ -112,16 +112,19 @@ let
                 _module.args =
                   let
                     inherit (config.nixpkgs.hostPlatform) system;
+                    nixverse = pkgs.callPackage (import ./packages/nixverse/wrapped.nix node) {
+                      nixverse = pkgs.callPackage (import ./packages/nixverse) {
+                        inherit (self.inputs.nix-darwin.packages.${system}) darwin-rebuild;
+                      };
+                    };
                   in
                   {
                     pkgs' =
                       lib.optionalAttrs (node ? flake) {
-                        nixverse = pkgs.callPackage (import ./packages/nixverse/wrapped.nix node) {
-                          nixverse = self.packages.${system}.nixverse;
-                        };
+                        inherit nixverse;
                         # TOOD check input nix-darwin exists if node.os is darwin
                         config = pkgs.callPackage (import ./packages/config node) {
-                          darwin-rebuild = inputs.nix-darwin.packages.${system}.darwin-rebuild;
+                          inherit nixverse;
                         };
                       }
                       // lib.mapAttrs (name: v: pkgs.callPackage v { }) rawPkgs

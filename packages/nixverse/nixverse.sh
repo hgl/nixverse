@@ -1,5 +1,6 @@
 #!@shell@
-set -xeuo pipefail
+# shellcheck shell=bash
+set -euo pipefail
 
 PATH=@path@:$PATH
 
@@ -26,7 +27,7 @@ cmd_node_bootstrap() {
 	shift $((OPTIND - 1))
 
 	local node_name=$1
-	local dst=${2-}
+	local ssh_dst=${2-}
 
 	build_node
 
@@ -34,7 +35,7 @@ cmd_node_bootstrap() {
 	local f
 	if f=$(find_node_file partition.bash) && [[ -n $f ]]; then
 		#shellcheck disable=SC2029
-		ssh "$dst" "$(<"$f")"
+		ssh "$ssh_dst" "$(<"$f")"
 	elif f=$(find_node_file disk-config.nix) && [[ -n $f ]]; then
 		use_disko=1
 	else
@@ -43,7 +44,7 @@ cmd_node_bootstrap() {
 			jq --raw-output '"\(.boot.type),\(.boot.device.path),\(.boot.device.root.format)"' <<<"$node_json"
 		)
 		#shellcheck disable=SC2029
-		ssh "$dst" "
+		ssh "$ssh_dst" "
 			BOOT_TYPE='$boot_type'
 			BOOT_DEVICE='$boot_device'
 			ROOT_FORMAT='$root_format'
@@ -67,7 +68,7 @@ cmd_node_bootstrap() {
 	nixos-anywhere \
 		--flake "$flake_dir#$node_name" \
 		"${args[@]}" \
-		"$dst"
+		"$ssh_dst"
 	rsync_fs /mnt
 }
 
@@ -83,16 +84,16 @@ cmd_node_deploy() {
 	shift $((OPTIND - 1))
 
 	local node_name=$1
-	local dst=${2-}
+	local ssh_dst=${2-}
 
 	build_node
 
 	case $node_os in
 	nixos)
 		local args=()
-		if [[ -n $dst ]]; then
+		if [[ -n $ssh_dst ]]; then
 			args+=(
-				--target-host "$dst"
+				--target-host "$ssh_dst"
 				--use-remote-sudo
 				--fast
 			)
@@ -119,14 +120,14 @@ cmd_node_deploy() {
 
 cmd_node_rollback() {
 	local node_name=$1
-	local dst=${2-}
+	local ssh_dst=${2-}
 
 	find_flake
 
 	local args=()
-	if [[ -n $dst ]]; then
+	if [[ -n $ssh_dst ]]; then
 		args+=(
-			--target-host "$dst"
+			--target-host "$ssh_dst"
 			--use-remote-sudo
 			--fast
 		)
@@ -137,10 +138,24 @@ cmd_node_rollback() {
 		--rollback
 }
 
-cmd_cleanup() {
-	local dst=${1-}
+cmd_node_clean() {
+	local node_name=$1
+	local ssh_dst=${2-}
 
-	ssh "$dst" nix-collect-garbage --delete-old
+	if [[ -n $ssh_dst ]]; then
+		set -- ssh "$ssh_dst"
+	fi
+	"$@" nix-collect-garbage --delete-old
+}
+
+cmd_node_update() {
+	find_flake
+
+	pushd "$flake_dir" >/dev/null
+	nix flake update
+	popd >/dev/null
+
+	cmd_node_deploy "$@"
 }
 
 cmd_node_state() {
@@ -864,10 +879,8 @@ rsync_fs() {
 
 	find_node
 	local dirs=()
-	if [[ -n $node_group ]]; then
-		if [[ -d "$node_base_dir/common/fs" ]]; then
-			dirs+=("$node_base_dir/common/fs")
-		fi
+	if [[ -n $node_group ]] && [[ -d "$node_base_dir/common/fs" ]]; then
+		dirs+=("$node_base_dir/common/fs")
 	fi
 	if [[ -d "$node_dir/fs" ]]; then
 		dirs+=("$node_dir/fs")
@@ -875,18 +888,33 @@ rsync_fs() {
 	if [[ -d "$node_build_dir/fs" ]]; then
 		dirs+=("$node_build_dir/fs")
 	fi
+	local uid
+	local args=()
 	if [[ ${#dirs[@]} != 0 ]]; then
-		rsync \
+		uid=$(id --user)
+		if [[ $uid = 0 ]]; then
+			set --
+		else
+			set -- sudo
+		fi
+		"$@" rsync \
 			--quiet \
 			--recursive \
 			--perms \
 			--times \
 			"${dirs[@]/%//}" \
-			"${dst:+$dst:}${target_dir:-/}"
+			"${ssh_dst:+$ssh_dst:}${target_dir:-/}"
 	fi
 
+	dirs=()
 	if [[ -d "$node_dir/home" ]]; then
-		find "$node_dir/home" \
+		dirs+=("$node_dir/home")
+	fi
+	if [[ -d "$node_build_dir/home" ]]; then
+		dirs+=("$node_build_dir/home")
+	fi
+	if [[ ${#dirs[@]} != 0 ]]; then
+		find "${dirs[@]}" \
 			-mindepth 2 \
 			-maxdepth 2 \
 			-name fs \
@@ -907,17 +935,34 @@ rsync_fs() {
 					gid=$(dscl . -read "/Users/$user" PrimaryGroupID)
 					gid=${gid#PrimaryGroupID: }
 				fi
-				sudo rsync \
-					--quiet \
-					--recursive \
-					--perms \
-					--times \
-					--chown "$uid:$gid" \
-					--numeric-ids \
-					"$dir/" \
-					"${dst:+$dst:}$target_dir$home/"
+				;;
+			nixos)
+				IFS=: read -r uid gid home < <(
+					awk -F: -v OFS=: -v "user=$user" \
+						'$1 == user { print $3, $4, $6 }' /etc/passwd
+				)
+				;;
+			*)
+				echo >&2 "Unknown OS: $node_os"
+				return 1
 				;;
 			esac
+			uid=$(id --user)
+			if [[ $uid = 0 ]]; then
+				set --
+			else
+				set -- sudo
+			fi
+			"$@" rsync \
+				--quiet \
+				--recursive \
+				--perms \
+				--times \
+				--chown "$uid:$gid" \
+				--numeric-ids \
+				"$dir/" \
+				"${ssh_dst:+$ssh_dst:}$target_dir$home/"
+
 		)
 	fi
 }

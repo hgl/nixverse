@@ -3,8 +3,7 @@ node:
   lib,
   runCommand,
   bash,
-  nixos-rebuild,
-  darwin-rebuild,
+  nixverse,
 }:
 runCommand "config"
   {
@@ -12,15 +11,12 @@ runCommand "config"
   }
   ''
     mkdir -p $out/bin
-    substitute ${./config.bash} $out/bin/config \
+    substitute ${./config.sh} $out/bin/config \
       --subst-var-by shell ${lib.getExe bash} \
-      --subst-var-by flake '${node.flake}' \
       --subst-var-by node_name '${node.name}' \
-      --subst-var-by node_os '${node.os}' \
       --subst-var-by path ${
         lib.makeBinPath [
-          nixos-rebuild
-          darwin-rebuild
+          nixverse
         ]
       }
     chmod a=rx $out/bin/config

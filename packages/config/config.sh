@@ -1,40 +1,24 @@
 #!@shell@
+# shellcheck shell=bash
 set -euo pipefail
 
 PATH=@path@:$PATH
-flake_dir='@flake@'
 node_name='@node_name@'
-node_os='@node_os@'
 
 cmd_reload() {
-	case $node_os in
-	nixos)
-		nixos-rebuild switch \
-			--flake "$flake_dir#$node_name" \
-			--show-trace
-		;;
-	darwin)
-		darwin-rebuild switch \
-			--flake "$flake_dir#$node_name" \
-			--show-trace
-		;;
-	*)
-		echo >&2 "Unknown OS: $node_os"
-		return 1
-		;;
-	esac
+	nixverse node deploy "$node_name"
 }
 
 cmd_update() {
-	pushd "$flake_dir" >/dev/null
-	nix flake update
-	popd >/dev/null
+	nixverse node update "$node_name"
+}
 
-	cmd_reload
+cmd_rollback() {
+	nixverse node rollback "$node_name"
 }
 
 cmd_clean() {
-	nix-collect-garbage --delete-old
+	nixverse node clean "$node_name"
 }
 
 cmd() {
