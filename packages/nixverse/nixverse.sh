@@ -907,12 +907,15 @@ rsync_fs() {
 		if [[ -d "$node_base_dir/common/fs" ]]; then
 			dirs+=("$node_base_dir/common/fs")
 		fi
-		if [[ -d "$node_base_dir/common/fs" ]]; then
-			dirs+=("$node_base_dir/common/fs")
+		if [[ -d "$node_secrets_base_dir/common/fs" ]]; then
+			dirs+=("$node_secrets_base_dir/common/fs")
 		fi
 	fi
 	if [[ -d "$node_dir/fs" ]]; then
 		dirs+=("$node_dir/fs")
+	fi
+	if [[ -d "$node_secrets_dir/fs" ]]; then
+		dirs+=("$node_secrets_dir/fs")
 	fi
 	if [[ -d "$node_dir/fs" ]]; then
 		dirs+=("$node_dir/fs")
@@ -940,6 +943,9 @@ rsync_fs() {
 	dirs=()
 	if [[ -d "$node_dir/home" ]]; then
 		dirs+=("$node_dir/home")
+	fi
+	if [[ -d "$node_secrets_dir/home" ]]; then
+		dirs+=("$node_secrets_dir/home")
 	fi
 	if [[ -d "$node_build_dir/home" ]]; then
 		dirs+=("$node_build_dir/home")
