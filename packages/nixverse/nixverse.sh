@@ -195,7 +195,7 @@ EOF
 			key=$(node_age_key)
 			SOPS_AGE_KEY=$key sops "$node_secrets"
 		else
-			local common_secrets=$node_secrets_common_dir/secrets.yaml
+			local common_secrets=$node_secrets_base_dir/common/secrets.yaml
 			local new_common_secrets=''
 			if [[ ! -e $common_secrets ]]; then
 				new_common_secrets=1
@@ -518,15 +518,9 @@ find_node() {
 		node_dir=$node_base_dir/$node_name
 	fi
 	if [[ -z $secrets_dir ]]; then
-		node_secrets_common_dir=''
 		node_secrets_dir=''
 		node_secrets_base_dir=''
 	else
-		if [[ -z $node_group ]]; then
-			node_secrets_common_dir=''
-		else
-			node_secrets_common_dir=$secrets_dir/nodes/$node_group/common
-		fi
 		node_secrets_dir=$secrets_dir/$node_dir
 		node_secrets_base_dir=$secrets_dir/$node_base_dir
 	fi
@@ -744,15 +738,15 @@ build_node() {
 			NODE_CHANNEL=$node_channel \
 			NODE_NAME=$node_name \
 			NODE_GROUP=$node_group \
-			NODE_DIR=$node_dir \
 			NODE_BASE_DIR=$node_base_dir \
+			NODE_DIR=$node_dir \
 			FLAKE_DIR=$flake_dir \
-			NODE_BUILD_DIR=$node_build_dir \
 			NODE_BUILD_BASE_DIR=$node_build_base_dir \
+			NODE_BUILD_DIR=$node_build_dir \
 			BUILD_DIR=$build_dir \
-			SECRETS_DIR=$secrets_dir \
+			NODE_SECRETS_BASE_DIR=$node_secrets_base_dir \
 			NODE_SECRETS_DIR=$node_secrets_dir \
-			NODE_SECRETS_COMMON_DIR=$node_secrets_common_dir \
+			SECRETS_DIR=$secrets_dir \
 			make \
 			-C "$node_secrets_base_dir" \
 			--no-builtin-rules \
@@ -772,15 +766,15 @@ build_node_secrets() {
 		NODE_CHANNEL=$node_channel \
 		NODE_NAME=$node_name \
 		NODE_GROUP=$node_group \
-		NODE_DIR=$node_dir \
 		NODE_BASE_DIR=$node_base_dir \
+		NODE_DIR=$node_dir \
 		FLAKE_DIR=$flake_dir \
 		NODE_BUILD_DIR=$node_build_dir \
 		NODE_BUILD_BASE_DIR=$node_build_base_dir \
 		BUILD_DIR=$build_dir \
-		SECRETS_DIR=$secrets_dir \
+		NODE_SECRETS_BASE_DIR=$node_secrets_base_dir \
 		NODE_SECRETS_DIR=$node_secrets_dir \
-		NODE_SECRETS_COMMON_DIR=$node_secrets_common_dir \
+		SECRETS_DIR=$secrets_dir \
 		make \
 		-C "$flake_dir" \
 		-f @out@/lib/nixverse/secrets.mk \
@@ -909,8 +903,16 @@ rsync_fs() {
 
 	find_node
 	local dirs=()
-	if [[ -n $node_group ]] && [[ -d "$node_base_dir/common/fs" ]]; then
-		dirs+=("$node_base_dir/common/fs")
+	if [[ -n $node_group ]]; then
+		if [[ -d "$node_base_dir/common/fs" ]]; then
+			dirs+=("$node_base_dir/common/fs")
+		fi
+		if [[ -d "$node_base_dir/common/fs" ]]; then
+			dirs+=("$node_base_dir/common/fs")
+		fi
+	fi
+	if [[ -d "$node_dir/fs" ]]; then
+		dirs+=("$node_dir/fs")
 	fi
 	if [[ -d "$node_dir/fs" ]]; then
 		dirs+=("$node_dir/fs")
