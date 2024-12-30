@@ -19,6 +19,14 @@
         inherit lib lib';
       };
       lib' = import ./lib.nix libArgs;
+      template = {
+        path = ./template;
+        description = "Nixverse template";
+        welcomeText = ''
+          foobar
+          line2
+        '';
+      };
     in
     {
       load = import ./load.nix {
@@ -39,6 +47,8 @@
           default = nixverse;
         }
       );
+      templates.nixverse = template;
+      templates.default = template;
       devShells = lib'.forAllSystems (
         system:
         let

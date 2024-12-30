@@ -1,0 +1,3 @@
+**/fs/.ssh/*
+**/fs/etc/ssh/*
+**/sops/age/keys.txt
