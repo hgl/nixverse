@@ -911,7 +911,7 @@ rsync_fs() {
 			--perms \
 			--times \
 			"${dirs[@]/%//}" \
-			"${ssh_dst:+$ssh_dst:}${target_dir:-/}"
+			"${ssh_dst:+$ssh_dst:}${target_dir}/"
 	fi
 
 	dirs=()
