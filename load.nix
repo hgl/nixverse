@@ -5,46 +5,19 @@
 }:
 flake:
 let
-  rawPkgs = importDir "${flake}/pkgs";
-  rawSecretPkgs = importDir "${flake.inputs.secrets}/pkgs";
-  flakeSelf = {
-    nixosModules =
-      importDir "${flake}/modules/nixos"
-      // lib.optionalAttrs (flake.inputs ? secrets) (importDir "${flake.inputs.secrets}/modules/nixos");
-    darwinModules =
-      importDir "${flake}/modules/darwin"
-      // lib.optionalAttrs (flake.inputs ? secrets) (importDir "${flake.inputs.secrets}/modules/darwin");
-    homeManagerModules =
-      importDir "${flake}/modules/homeManager"
-      // lib.optionalAttrs (flake.inputs ? secrets) (
-        importDir "${flake.inputs.secrets}/modules/homeManager"
-      );
-    packages = lib'.forAllSystems (
-      system:
-      let
-        pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
-      in
-      lib.mapAttrs (name: v: pkgs.callPackage v { }) rawPkgs
-      // lib.optionalAttrs (flake.inputs ? secrets) (
-        lib.mapAttrs (name: v: pkgs.callPackage v { }) rawSecretPkgs
-      )
+  flakePkgs = importDir "${flake}/pkgs";
+  secretsPkgs = importDir "${flake.inputs.secrets}/pkgs";
+  nixosModules =
+    importDir "${flake}/modules/nixos"
+    // lib.optionalAttrs (flake.inputs ? secrets) (importDir "${flake.inputs.secrets}/modules/nixos");
+  darwinModules =
+    importDir "${flake}/modules/darwin"
+    // lib.optionalAttrs (flake.inputs ? secrets) (importDir "${flake.inputs.secrets}/modules/darwin");
+  hmModules =
+    importDir "${flake}/modules/homeManager"
+    // lib.optionalAttrs (flake.inputs ? secrets) (
+      importDir "${flake.inputs.secrets}/modules/homeManager"
     );
-    nixosConfigurations = configurations.nixos;
-    darwinConfigurations = configurations.darwin;
-    nodes = lib.concatMapAttrs (
-      name: entity:
-      if entity ? node then
-        { ${name} = entity.node; }
-      else if entity ? nodes then
-        lib.mapAttrs (name: entity: entity.node) entity.nodes
-      else
-        { }
-    ) entities;
-    nodeGroups = lib.concatMapAttrs (
-      name: entity:
-      if entity ? nodes then { ${name} = lib.mapAttrs (name: entity: entity.node) entity.nodes; } else { }
-    ) entities;
-  };
   configurations =
     let
       grouped = lib.groupBy ({ node, ... }: node.os) (
@@ -79,8 +52,8 @@ let
             .${node.os};
           modules =
             {
-              nixos = flakeSelf.nixosModules;
-              darwin = flakeSelf.darwinModules;
+              nixos = nixosModules;
+              darwin = darwinModules;
             }
             .${node.os};
         in
@@ -89,7 +62,7 @@ let
             {
               inherit (entity) inputs node lib';
               modules' = modules;
-              hmModules' = flakeSelf.homeManagerModules;
+              hmModules' = hmModules;
             }
             // lib.optionalAttrs (flake.inputs ? secrets) {
               secrets =
@@ -127,9 +100,9 @@ let
                           inherit nixverse;
                         };
                       }
-                      // lib.mapAttrs (name: v: pkgs.callPackage v { }) rawPkgs
+                      // lib.mapAttrs (name: v: pkgs.callPackage v { }) flakePkgs
                       // lib.optionalAttrs (flake.inputs ? secrets) (
-                        lib.mapAttrs (name: v: pkgs.callPackage v { }) rawSecretPkgs
+                        lib.mapAttrs (name: v: pkgs.callPackage v { }) secretsPkgs
                       );
                   }
                   // lib.optionalAttrs (node.channel != "unstable" && flake.inputs ? nixpkgs-unstable) {
@@ -380,4 +353,32 @@ let
   callWithOptionalArgs =
     f: args: if lib.isFunction f then f (lib.intersectAttrs (lib.functionArgs f) args) else f;
 in
-flakeSelf
+{
+  inherit nixosModules darwinModules;
+  homeManagerModules = hmModules;
+  packages = lib'.forAllSystems (
+    system:
+    let
+      pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
+    in
+    lib.mapAttrs (name: v: pkgs.callPackage v { }) flakePkgs
+    // lib.optionalAttrs (flake.inputs ? secrets) (
+      lib.mapAttrs (name: v: pkgs.callPackage v { }) secretsPkgs
+    )
+  );
+  nixosConfigurations = configurations.nixos;
+  darwinConfigurations = configurations.darwin;
+  nodes = lib.concatMapAttrs (
+    name: entity:
+    if entity ? node then
+      { ${name} = entity.node; }
+    else if entity ? nodes then
+      lib.mapAttrs (name: entity: entity.node) entity.nodes
+    else
+      { }
+  ) entities;
+  nodeGroups = lib.concatMapAttrs (
+    name: entity:
+    if entity ? nodes then { ${name} = lib.mapAttrs (name: entity: entity.node) entity.nodes; } else { }
+  ) entities;
+}

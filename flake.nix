@@ -46,7 +46,16 @@
         in
         {
           default = pkgs.mkShell {
-            packages = [ self.packages.${system}.nixverse ];
+            packages =
+              with pkgs;
+              [
+                nil
+                nixfmt-rfc-style
+                shfmt
+                shellcheck
+                nodePackages.bash-language-server
+              ]
+              ++ [ self.packages.${system}.nixverse ];
           };
         }
       );
