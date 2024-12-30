@@ -1,4 +1,4 @@
-node:
+config':
 {
   lib,
   runCommand,
@@ -12,5 +12,5 @@ runCommand "nixverse"
   }
   ''
     makeWrapper ${lib.getExe nixverse} $out/bin/nixverse \
-      --set FLAKE_DIR '${node.flakeSource}'
+      --set FLAKE_DIR '${config'.flakeSource}'
   ''

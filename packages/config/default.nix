@@ -3,6 +3,7 @@ node:
   lib,
   runCommand,
   bash,
+  coreutils,
   nixverse,
 }:
 runCommand "config"
@@ -16,6 +17,7 @@ runCommand "config"
       --subst-var-by node_name '${node.name}' \
       --subst-var-by path ${
         lib.makeBinPath [
+          coreutils
           nixverse
         ]
       }

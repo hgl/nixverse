@@ -18,6 +18,20 @@ let
     // lib.optionalAttrs (flake.inputs ? secrets) (
       importDir "${flake.inputs.secrets}/modules/homeManager"
     );
+  config' =
+    lib.recursiveUpdate
+      (
+        if lib.pathExists "${flake}/config.json" then
+          builtins.fromJSON (builtins.readFile "${flake}/config.json")
+        else
+          { }
+      )
+      (
+        if flake.inputs ? secrets && lib.pathExists "${flake.inputs.secrets}/config.json" then
+          builtins.fromJSON (builtins.readFile "${flake.inputs.secrets}/config.json")
+        else
+          { }
+      );
   configurations =
     let
       grouped = lib.groupBy ({ node, ... }: node.os) (
@@ -61,6 +75,7 @@ let
           specialArgs =
             {
               inherit (entity) inputs node lib';
+              inherit config';
               modules' = modules;
               hmModules' = hmModules;
             }
@@ -85,25 +100,25 @@ let
                 _module.args =
                   let
                     inherit (config.nixpkgs.hostPlatform) system;
-                    nixverse = pkgs.callPackage (import ./packages/nixverse/wrapped.nix node) {
-                      nixverse = pkgs.callPackage (import ./packages/nixverse) {
-                        inherit (self.inputs.nix-darwin.packages.${system}) darwin-rebuild;
-                      };
-                    };
-                  in
-                  {
                     pkgs' =
-                      lib.optionalAttrs (node ? flakeSource) {
-                        inherit nixverse;
+                      lib.optionalAttrs (config' ? flakeSource) {
+                        nixverse = pkgs.callPackage (import ./packages/nixverse/wrapped.nix config') {
+                          nixverse = pkgs.callPackage (import ./packages/nixverse) {
+                            inherit (self.inputs.nix-darwin.packages.${system}) darwin-rebuild;
+                          };
+                        };
                         # TOOD check input nix-darwin exists if node.os is darwin
                         config = pkgs.callPackage (import ./packages/config node) {
-                          inherit nixverse;
+                          inherit (pkgs') nixverse;
                         };
                       }
                       // lib.mapAttrs (name: v: pkgs.callPackage v { }) flakePkgs
                       // lib.optionalAttrs (flake.inputs ? secrets) (
                         lib.mapAttrs (name: v: pkgs.callPackage v { }) secretsPkgs
                       );
+                  in
+                  {
+                    inherit pkgs';
                   }
                   // lib.optionalAttrs (node.channel != "unstable" && flake.inputs ? nixpkgs-unstable) {
                     pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};

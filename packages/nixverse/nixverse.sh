@@ -549,7 +549,7 @@ find_secrets() {
 
 	if [[ ${secrets_dir-.} != . ]]; then
 		if [[ -z $secrets_dir ]] && [[ -z $optional ]]; then
-			echo >&2 "Missing \".secrets.directory\": $flake_dir/config.json"
+			echo >&2 "Missing \"secretsSource\": $flake_dir/config.json"
 			return 1
 		fi
 		return
@@ -559,9 +559,9 @@ find_secrets() {
 	secrets_dir=''
 	if [[ -e $flake_dir/config.json ]]; then
 		secrets_dir=$(jq --raw-output --arg conf "$flake_dir/config.json" '
-			.secrets.directory // empty |
-			if type != "string" or . == "" then
-				"\".secrets.directory\" must be a non-empty string: \($conf)" | halt_error(1)
+			.secretsSource // empty |
+			if type != "string" or (startswith("/") | not) then
+				"\"secretsSource\" must be an absolute path string: \($conf)" | halt_error(1)
 			else
 				.
 			end
@@ -577,7 +577,7 @@ find_secrets() {
 		jq 'if .locks.nodes.secrets then 1 else empty end')
 	if [[ -z $secrets_dir ]] && [[ -z $input_exists ]]; then
 		if [[ -z $optional ]]; then
-			echo >&2 "Missing \".secrets.directory\": $flake_dir/config.json"
+			echo >&2 "Missing \"secretsSource\": $flake_dir/config.json"
 			return 1
 		fi
 		return
@@ -820,9 +820,9 @@ encrypt_root_secrets() {
 	local out_file=${3-}
 
 	local recipients
-	recipients=$(config '.secrets.rootRecipients // empty | [.] | flatten(1) | join(",")')
+	recipients=$(config '.rootSecretsRecipients // empty | [.] | flatten(1) | join(",")')
 	if [[ -z $recipients ]]; then
-		echo >&2 "Missing \".secrets.rootRecipients\": $flake_dir/config.json"
+		echo >&2 "Missing \"rootSecretsRecipients\": $flake_dir/config.json"
 		return 1
 	fi
 	local args=()
