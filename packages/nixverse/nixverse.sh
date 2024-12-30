@@ -861,7 +861,7 @@ decrypt_root_secrets() {
 node_age_recipient() {
 	find_node
 
-	local pubkey=$node_secrets_dir/ssh_host_ed25519_key.pub
+	local pubkey=$node_dir/fs/etc/ssh/ssh_host_ed25519_key.pub
 	if [[ ! -e $pubkey ]]; then
 		build_node_secrets "$pubkey" >/dev/null
 	fi
@@ -871,7 +871,7 @@ node_age_recipient() {
 node_age_key() {
 	find_node
 
-	local key=$node_secrets_dir/fs/etc/ssh/ssh_host_ed25519_key
+	local key=$node_dir/fs/etc/ssh/ssh_host_ed25519_key
 	if [[ ! -e $key ]]; then
 		build_node_secrets "$key" >/dev/null
 	fi

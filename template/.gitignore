@@ -1,3 +1,5 @@
 **/fs/.ssh/*
+!**/fs/.ssh/*.pub
 **/fs/etc/ssh/*
+!**/fs/etc/ssh/*.pub
 **/sops/age/keys.txt
