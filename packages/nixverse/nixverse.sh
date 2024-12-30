@@ -483,13 +483,11 @@ find_flake() {
 			return 1
 		fi
 		flake_dir=$FLAKE_DIR
-		build_dir=$flake_dir/build
 		return
 	fi
 	flake_dir=$PWD
 	while true; do
 		if [[ -e $flake_dir/flake.nix ]]; then
-			build_dir=$flake_dir/build
 			return
 		fi
 		if [[ $flake_dir = / ]]; then
@@ -505,7 +503,7 @@ find_node() {
 		return
 	fi
 	find_flake
-	find_secrets -o
+	find_secrets
 	find_node_json
 	IFS=, read -r node_os node_channel node_group < <(
 		jq --raw-output '"\(.os),\(.channel),\(.group)"' <<<"$node_json"
@@ -524,28 +522,12 @@ find_node() {
 		node_secrets_dir=$secrets_dir/$node_dir
 		node_secrets_base_dir=$secrets_dir/$node_base_dir
 	fi
-	node_build_dir=$build_dir/$node_dir
-	node_build_base_dir=$build_dir/$node_base_dir
 	node_dir=$flake_dir/$node_dir
 	node_base_dir=$flake_dir/$node_base_dir
 }
 
 find_secrets() {
-	local optional=''
-	OPTIND=1
-	while getopts 'o' opt; do
-		case $opt in
-		o) optional=1 ;;
-		?) exit 1 ;;
-		esac
-	done
-	shift $((OPTIND - 1))
-
-	if [[ ${secrets_dir-.} != . ]]; then
-		if [[ -z $secrets_dir ]] && [[ -z $optional ]]; then
-			echo >&2 "Missing \"secretsSource\": $flake_dir/config.json"
-			return 1
-		fi
+	if [[ -n ${secrets_dir-} ]]; then
 		return
 	fi
 
@@ -560,28 +542,20 @@ find_secrets() {
 				.
 			end
 		' "$flake_dir/config.json")
-		if [[ $secrets_dir = /* ]]; then
-			secrets_dir=$(readlink -f "$secrets_dir")
-		else
-			secrets_dir=$(readlink -f "$flake_dir/$secrets_dir")
-		fi
 	fi
 	local input_exists
 	input_exists=$(nix flake metadata "$flake_dir" --json |
 		jq 'if .locks.nodes.secrets then 1 else empty end')
 	if [[ -z $secrets_dir ]] && [[ -z $input_exists ]]; then
-		if [[ -z $optional ]]; then
-			echo >&2 "Missing \"secretsSource\": $flake_dir/config.json"
-			return 1
-		fi
+		secrets_dir=$flake_dir
 		return
 	else
-		if [[ -z $input_exists ]]; then
-			echo >&2 "\"secrets\" inpu is specified in flake.nix, but \".secrets.directory\" is unspecified in config.json: $flake_dir"
+		if [[ -z $secrets_dir ]]; then
+			echo >&2 "\"secrets\" input is specified in flake.nix, but \"secretsSource\" is not specified in config.json: $flake_dir"
 			return 1
 		fi
 		if [[ -z $input_exists ]]; then
-			echo >&2 "\".secrets.directory\" is specified in config.json, but no \"secrets\" input is specified in flake.nix: $flake_dir"
+			echo >&2 "\"secretsSource\" is specified in config.json, but \"secrets\" input is not specified in flake.nix: $flake_dir"
 			return 1
 		fi
 		nix flake update secrets --flake "$flake_dir"
@@ -591,8 +565,7 @@ find_secrets() {
 find_node_by_secret_path() {
 	secret_path=$(readlink -f "$1")
 
-	find_secrets -o
-
+	find_secrets
 	node_name=''
 	node_group=''
 	local p
@@ -733,7 +706,7 @@ find_group_json() {
 build_node() {
 	build_node_secrets
 
-	if [[ -n $node_secrets_base_dir ]] && [[ -e $node_secrets_base_dir/Makefile ]]; then
+	if [[ -e $node_base_dir/Makefile ]]; then
 		NODE_OS=$node_os \
 			NODE_CHANNEL=$node_channel \
 			NODE_NAME=$node_name \
@@ -741,9 +714,24 @@ build_node() {
 			NODE_BASE_DIR=$node_base_dir \
 			NODE_DIR=$node_dir \
 			FLAKE_DIR=$flake_dir \
-			NODE_BUILD_BASE_DIR=$node_build_base_dir \
-			NODE_BUILD_DIR=$node_build_dir \
-			BUILD_DIR=$build_dir \
+			NODE_SECRETS_BASE_DIR=$node_secrets_base_dir \
+			NODE_SECRETS_DIR=$node_secrets_dir \
+			SECRETS_DIR=$secrets_dir \
+			make \
+			-C "$node_base_dir" \
+			--no-builtin-rules \
+			--no-builtin-variables \
+			--warn-undefined-variables \
+			"$@"
+	fi
+	if [[ $node_secrets_base_dir != "$node_base_dir" ]] && [[ -e $node_secrets_base_dir/Makefile ]]; then
+		NODE_OS=$node_os \
+			NODE_CHANNEL=$node_channel \
+			NODE_NAME=$node_name \
+			NODE_GROUP=$node_group \
+			NODE_BASE_DIR=$node_base_dir \
+			NODE_DIR=$node_dir \
+			FLAKE_DIR=$flake_dir \
 			NODE_SECRETS_BASE_DIR=$node_secrets_base_dir \
 			NODE_SECRETS_DIR=$node_secrets_dir \
 			SECRETS_DIR=$secrets_dir \
@@ -759,9 +747,6 @@ build_node() {
 build_node_secrets() {
 	find_node
 
-	if [[ -z $node_secrets_dir ]]; then
-		return
-	fi
 	NODE_OS=$node_os \
 		NODE_CHANNEL=$node_channel \
 		NODE_NAME=$node_name \
@@ -769,9 +754,6 @@ build_node_secrets() {
 		NODE_BASE_DIR=$node_base_dir \
 		NODE_DIR=$node_dir \
 		FLAKE_DIR=$flake_dir \
-		NODE_BUILD_DIR=$node_build_dir \
-		NODE_BUILD_BASE_DIR=$node_build_base_dir \
-		BUILD_DIR=$build_dir \
 		NODE_SECRETS_BASE_DIR=$node_secrets_base_dir \
 		NODE_SECRETS_DIR=$node_secrets_dir \
 		SECRETS_DIR=$secrets_dir \
@@ -785,10 +767,9 @@ build_node_secrets() {
 }
 
 config() {
-	find_secrets -o
-
 	local filter=${1-.}
 
+	find_secrets
 	local f
 	if [[ ! -e $flake_dir/config.json ]]; then
 		if [[ -z $secrets_dir ]] || [[ ! -e $secrets_dir/config.json ]]; then
@@ -878,7 +859,6 @@ decrypt_root_secrets() {
 }
 
 node_age_recipient() {
-	find_secrets
 	find_node
 
 	local pubkey=$node_secrets_dir/ssh_host_ed25519_key.pub
@@ -891,7 +871,7 @@ node_age_recipient() {
 node_age_key() {
 	find_node
 
-	local key=$node_build_dir/fs/etc/ssh/ssh_host_ed25519_key
+	local key=$node_secrets_dir/fs/etc/ssh/ssh_host_ed25519_key
 	if [[ ! -e $key ]]; then
 		build_node_secrets "$key" >/dev/null
 	fi
@@ -907,21 +887,15 @@ rsync_fs() {
 		if [[ -d "$node_base_dir/common/fs" ]]; then
 			dirs+=("$node_base_dir/common/fs")
 		fi
-		if [[ -d "$node_secrets_base_dir/common/fs" ]]; then
+		if [[ $node_secrets_base_dir != "$node_base_dir" ]] && [[ -d "$node_secrets_base_dir/common/fs" ]]; then
 			dirs+=("$node_secrets_base_dir/common/fs")
 		fi
 	fi
 	if [[ -d "$node_dir/fs" ]]; then
 		dirs+=("$node_dir/fs")
 	fi
-	if [[ -d "$node_secrets_dir/fs" ]]; then
+	if [[ $node_secrets_dir != "$node_dir" ]] && [[ -d "$node_secrets_dir/fs" ]]; then
 		dirs+=("$node_secrets_dir/fs")
-	fi
-	if [[ -d "$node_dir/fs" ]]; then
-		dirs+=("$node_dir/fs")
-	fi
-	if [[ -d "$node_build_dir/fs" ]]; then
-		dirs+=("$node_build_dir/fs")
 	fi
 	local uid
 	local args=()
@@ -944,11 +918,8 @@ rsync_fs() {
 	if [[ -d "$node_dir/home" ]]; then
 		dirs+=("$node_dir/home")
 	fi
-	if [[ -d "$node_secrets_dir/home" ]]; then
+	if [[ $node_secrets_dir != "$node_dir" ]] && [[ -d "$node_secrets_dir/home" ]]; then
 		dirs+=("$node_secrets_dir/home")
-	fi
-	if [[ -d "$node_build_dir/home" ]]; then
-		dirs+=("$node_build_dir/home")
 	fi
 	if [[ ${#dirs[@]} != 0 ]]; then
 		find "${dirs[@]}" \
