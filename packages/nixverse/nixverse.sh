@@ -572,23 +572,23 @@ find_node_by_secret_path() {
 	if p=${secret_path#"$flake_dir/"} && [[ $p != "$secret_path" ]]; then
 		secret_path=$p
 		secret_base_dir=$flake_dir
-	elif [[ -n $secrets_dir ]] && p=${secret_path#"$secrets_dir/"} && [[ $p != "$secret_path" ]]; then
+	elif [[ $secrets_dir != "$flake_dir" ]] && p=${secret_path#"$secrets_dir/"} && [[ $p != "$secret_path" ]]; then
 		secret_path=$p
-		secret_base_dir=$flake_dir
+		secret_base_dir=$secrets_dir
 	else
 		echo >&2 "Secret is not inside a flake directory"
 		return 1
 	fi
-	if p=${secret_path#nodes/} && [[ $p != "$secret_path" ]]; then
+	if p=${secret_path#nodes/} && [[ $p = "$secret_path" ]]; then
 		return
 	fi
 	secret_path=$p
 	secret_base_dir=$secret_base_dir/nodes
 	node_name=${secret_path%%/*}
 	secret_path=${secret_path#"$node_name/"}
-	if [[ -e $secret_base_dir/$node_name/node.nix ]]; then
+	if [[ -e $flake_dir/nodes/$node_name/node.nix ]]; then
 		find_node
-	elif [[ -e $secret_base_dir/$node_name/nodes.nix ]]; then
+	elif [[ -e $flake_dir/nodes/$node_name/nodes.nix ]]; then
 		node_name=${secret_path%%/*}
 		secret_path=${secret_path#"$node_name/"}
 		if [[ $node_name != common ]]; then
