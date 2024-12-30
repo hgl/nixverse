@@ -12,7 +12,7 @@ ifeq ($(NODE_OS),nixos)
   .NOTINTERMEDIATE: $(NODE_SECRETS_DIR)/ssh_host_%_key $(NODE_SECRETS_DIR)/ssh_host_%_key.pub
 
   $(NODE_SECRETS_DIR)/ssh_host_%_key: | $(NODE_SECRETS_DIR)
-	recipients=$$(nixver config '.rootSecretsRecipients // empty | [.] | flatten(1) | join(",")')
+	recipients=$$(nixverse config '.rootSecretsRecipients // empty | [.] | flatten(1) | join(",")')
 	if [[ -z $$recipients ]]; then
 		echo >&2 'Missing "rootSecretsRecipients": $(FLAKE_DIR)/config.json'
 		exit 1
