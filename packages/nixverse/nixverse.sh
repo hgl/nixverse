@@ -69,6 +69,7 @@ cmd_node_bootstrap() {
 		--flake "$flake_dir#$node_name" \
 		"${args[@]}" \
 		"$ssh_dst"
+	ssh "$ssh_dst" nix-env -iA nixos.rsync
 	rsync_fs /mnt
 }
 
@@ -879,6 +880,7 @@ node_age_key() {
 }
 
 rsync_fs() {
+	set -x
 	local target_dir=${1-}
 
 	find_node
