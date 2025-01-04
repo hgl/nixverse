@@ -880,7 +880,6 @@ node_age_key() {
 }
 
 rsync_fs() {
-	set -x
 	local target_dir=${1-}
 
 	find_node
