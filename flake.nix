@@ -29,8 +29,9 @@
       };
     in
     {
+      inherit self;
       load = import ./load.nix {
-        inherit lib self lib';
+        inherit lib lib';
       };
       lib = lib';
       packages = lib'.forAllSystems (
@@ -64,10 +65,61 @@
                 shfmt
                 shellcheck
                 nodePackages.bash-language-server
+                (writeShellScriptBin "run" ''
+                  for i in $(seq 1 $((1 + $RANDOM % 4))); do
+                    echo doing step $i
+                    sleep 0.$(($RANDOM % 999))
+                  done
+                '')
               ]
               ++ [ self.packages.${system}.nixverse ];
           };
         }
       );
+      tests =
+        let
+          testLoad =
+            dirs: flake:
+            lib'.mapListToAttrs (
+              dir:
+              lib.nameValuePair dir (
+                import ./load.nix
+                  {
+                    inherit lib lib';
+                  }
+                  (
+                    {
+                      outPath = ./tests/${dir};
+                    }
+                    // flake
+                  )
+              )
+            ) dirs;
+        in
+        testLoad
+          [
+            "lib"
+            "selfNodes"
+            "selfGroup"
+            "crossRef"
+            "nodeNodesNameCollision"
+            "groupEmpty"
+            "groupEmptyDeep"
+            "groupUnknown"
+            "groupUnknownDeep"
+            "confPath"
+            "hwconfPath"
+          ]
+          {
+            inputs = {
+              nixpkgs-unstable = nixpkgs;
+            };
+          }
+        // testLoad [ "home" ] {
+          inputs = {
+            nixpkgs-unstable = nixpkgs;
+            home-manager-unstable = builtins.getFlake "github:nix-community/home-manager/bd65bc3cde04c16755955630b344bc9e35272c56";
+          };
+        };
     };
 }
