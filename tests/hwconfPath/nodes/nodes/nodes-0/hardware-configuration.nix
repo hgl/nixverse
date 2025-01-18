@@ -1,6 +1,6 @@
-{ node, ... }:
+{ nodes, ... }:
 {
   nixverse-test = {
-    bar2 = node.x;
+    bar2 = nodes.current.x;
   };
 }

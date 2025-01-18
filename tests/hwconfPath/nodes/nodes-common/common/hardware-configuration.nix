@@ -1,4 +1,4 @@
-{ node, ... }:
+{ nodes, ... }:
 {
-  nixverse-test = node.x;
+  nixverse-test = nodes.current.x;
 }

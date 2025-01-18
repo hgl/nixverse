@@ -1,4 +1,4 @@
-{ lib, node, ... }:
+{ lib, nodes, ... }:
 {
   options = {
     nixverse-test = lib.mkOption {
@@ -6,6 +6,6 @@
     };
   };
   config.nixverse-test = {
-    bar = node.x;
+    bar = nodes.current.x;
   };
 }

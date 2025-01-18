@@ -22,136 +22,15 @@ let
     );
   loadConfigurations =
     os:
-    lib.mapAttrs (_: entity: loadConfiguration entity) (
-      lib.filterAttrs (_: entity: entity.type == "node" && entity.node.os == os) entities
-    );
-  loadConfiguration =
-    entity@{
-      node,
-      inputs,
-      configurationPaths,
-      hardwareConfigurationPaths,
-      secrets,
-      homeManagerUsers,
-      ...
-    }:
-    let
-      inherit (node) os;
-      mkSystem =
+    lib.concatMapAttrs (
+      name: entity:
+      if entity.type == "node" && entity.node.os == os then
         {
-          nixos = inputs.nixpkgs.lib.nixosSystem;
-          darwin = inputs.nix-darwin.lib.darwinSystem;
+          ${name} = entity.configuration;
         }
-        .${os};
-      modules =
-        {
-          nixos = nixosModules;
-          darwin = darwinModules;
-        }
-        .${os};
-      homeMangagerModule =
-        {
-          nixos = inputs.home-manager.nixosModules.home-manager;
-          darwin = inputs.home-manager.darwinModules.home-manager;
-        }
-        .${os};
-    in
-    mkSystem {
-      specialArgs = {
-        inherit inputs node;
-        lib' = entity.lib;
-        modules' = modules;
-      };
-      modules =
-        [
-          (
-            {
-              config,
-              pkgs,
-              lib,
-              ...
-            }:
-            let
-              inherit (config.nixpkgs.hostPlatform) system;
-              pkgs' = lib.mapAttrs (name: v: pkgs.callPackage v { }) allPkgs;
-            in
-            {
-              _module.args =
-                {
-                  inherit pkgs';
-                }
-                // lib.optionalAttrs (node.channel != "unstable" && allInputs ? nixpkgs-unstable) {
-                  pkgs-unstable = allInputs.nixpkgs-unstable.legacyPackages.${system};
-                };
-              networking.hostName = lib.mkDefault node.name;
-            }
-          )
-        ]
-        ++
-          lib.optional
-            (
-              node.parititions != null
-              && lib.elem node.parititions.bootType [
-                "efi"
-                "bios"
-              ]
-            )
-            {
-              fileSystems."/" = {
-                device = "/dev/disk/by-partlabel/root";
-                fsType = node.parititions.format;
-              };
-              swapDevices = lib.optional node.parititions.swan.enable {
-                device = "/dev/disk/by-partlabel/swap";
-              };
-            }
-        ++ lib.optional (secrets != null) {
-          imports = [ inputs.sops-nix.nixosModules.sops-nix ];
-          services.openssh.hostKeys = [ ];
-          sops.age =
-            {
-              sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-            }
-            // lib.optionalAttrs (secrets.secretsYamlPath != "") {
-              defaultSopsFile = lib.mkDefault secrets.secretsYamlPath;
-            };
-        }
-        ++ lib.optional (node.os == "nixos") (
-          { pkgs, ... }:
-          {
-            # Needed for syncing fs when deploying
-            environment.systemPackages = [ pkgs.rsync ];
-          }
-        )
-        ++ lib.optional (homeManagerUsers != { }) (
-          { pkgs', ... }:
-          {
-            imports = [ homeMangagerModule ];
-            home-manager = {
-              useGlobalPkgs = true;
-              useUserPackages = true;
-              extraSpecialArgs = {
-                inherit
-                  lib'
-                  pkgs'
-                  inputs
-                  node
-                  ;
-                modules' = homeManagerModules;
-              };
-              users = lib.mapAttrs (
-                _:
-                { homePaths }:
-                {
-                  imports = homePaths;
-                }
-              ) homeManagerUsers;
-            };
-          }
-        )
-        ++ configurationPaths
-        ++ hardwareConfigurationPaths;
-    };
+      else
+        { }
+    ) entities;
   entities = lib.zipAttrsWith (
     name: values:
     let
@@ -186,6 +65,10 @@ let
       "\"common\" is a reserved node name, cannot be used for ${
         lib.optionalString (base.main == null) "<override>/"
       }nodes/common/${base.entrypoint}";
+    assert lib.assertMsg (name != "current")
+      "\"current\" is a reserved node name, cannot be used for ${
+        lib.optionalString (base.main == null) "<override>/"
+      }nodes/current/${base.entrypoint}";
     if base.entrypoint == "node.nix" then
       loadNode {
         nodeName = name;
@@ -308,13 +191,17 @@ let
         lib.optionalAttrs (dir != "") (
           let
             v = import "${dir}/nodes.nix";
+            nodeNames = (lib.attrNames v);
           in
           assert lib.assertMsg (lib.isAttrs v)
             "${
               lib.optionalString (dir == base.override) "<override>/"
             }nodes/${groupName}/nodes.nix must evaluate to an attribute set";
-          assert lib.assertMsg
-            (lib.all (nodeName: nodeName == "common" || nodeName != groupName) (lib.attrNames v))
+          assert lib.assertMsg (lib.all (nodeName: nodeName != "current") nodeNames)
+            "\"current\" is a reserved node name, cannot be used in ${
+              lib.optionalString (dir == base.override) "<override>/"
+            }nodes/${groupName}/nodes.nix must not contain a node named ${groupName}, which is the same as the group name";
+          assert lib.assertMsg (lib.all (nodeName: nodeName == "common" || nodeName != groupName) nodeNames)
             "${
               lib.optionalString (dir == base.override) "<override>/"
             }nodes/${groupName}/nodes.nix must not contain a node named ${groupName}, which is the same as the group name";
@@ -397,46 +284,28 @@ let
                   {
                     _file = "${lib.optionalString (dir == base.override) "<override>/"}nodes/${groupName}/group.nix";
                     options.children = lib.mkOption {
-                      type = lib.types.nonEmptyListOf lib.types.nonEmptyStr;
+                      type = lib.types.attrsOf lib.types.bool;
                     };
                     config = raw;
                   }
                 ];
               }).config;
-            findNodes =
-              {
-                parent,
-                children,
-                visited,
-                path,
-              }:
-              lib.concatMap (
-                child:
-                assert lib.assertMsg (!(lib.hasAttr child visited))
-                  "circular group containment: ${lib.concatStringsSep " > " (path ++ [ child ])}";
-                if entities.${child}.type == "node" then
-                  [ child ]
-                else
-                  findNodes {
-                    parent = child;
-                    children = entities.${child}.group.children;
-                    visited = visited // {
-                      ${child} = true;
-                    };
-                    path = path ++ [ child ];
-                  }
-              ) children;
+            children = lib.filterAttrs (_: child: child) v.children;
           in
           assert lib.assertMsg (lib.isAttrs raw)
             "${
               lib.optionalString (dir == base.override) "<override>/"
             }nodes/${groupName}/group.nix must evaluate to an attribute set";
-          assert lib.assertMsg (lib.all (name: name != groupName) v.children)
+          assert lib.assertMsg (lib.all (name: name != groupName) (lib.attrNames children))
             "${
               lib.optionalString (dir == base.override) "<override>/"
             }nodes/${groupName}/group.nix#children must not contain the group's own name";
-          assert lib.assertMsg (lib.all (name: name != "common") v.children)
+          assert lib.assertMsg (lib.all (name: name != "common") (lib.attrNames children))
             "\"common\" is a reserved node name, cannot be used in ${
+              lib.optionalString (dir == base.override) "<override>/"
+            }nodes/${groupName}/group.nix#children";
+          assert lib.assertMsg (lib.all (name: name != "current") (lib.attrNames children))
+            "\"current\" is a reserved node name, cannot be used in ${
               lib.optionalString (dir == base.override) "<override>/"
             }nodes/${groupName}/group.nix#children";
           assert lib.all (
@@ -446,26 +315,56 @@ let
                 lib.optionalString (dir == base.override) "<override>/"
               }nodes/${groupName}/group.nix#children contains unknown node ${name}";
             true
-          ) v.children;
-          v
-          // {
-            nodes = findNodes {
-              parent = groupName;
-              inherit (group) children;
-              visited = {
-                ${groupName} = true;
-              };
-              path = [
-                groupName
-              ];
-            };
+          ) (lib.attrNames children);
+          {
+            inherit children;
           }
         );
+      findNodes =
+        {
+          parent,
+          children,
+          visited,
+          path,
+        }:
+        lib.concatMapAttrs (
+          child: _:
+          assert lib.assertMsg (!(lib.hasAttr child visited))
+            "circular group containment: ${lib.concatStringsSep " > " (path ++ [ child ])}";
+          if entities.${child}.type == "node" then
+            { ${child} = entities.${child}.node; }
+          else
+            findNodes {
+              parent = child;
+              children = entities.${child}.group.children;
+              visited = visited // {
+                ${child} = true;
+              };
+              path = path ++ [ child ];
+            }
+        ) children;
       groupMain = loadRaw base.main;
       groupOverride = loadRaw base.override;
+      children =
+        let
+          v = groupMain.children or { } // groupOverride.children or { };
+        in
+        assert lib.assertMsg (
+          v != { }
+        ) "nodes/${groupName}/group.nix#children must contain at least one child";
+        v;
+      nodes = findNodes {
+        parent = groupName;
+        inherit children;
+        visited = {
+          ${groupName} = true;
+        };
+        path = [
+          groupName
+        ];
+      };
       group = {
-        children = lib.unique (groupMain.children or [ ] ++ groupOverride.children or [ ]);
-        nodes = lib.unique (groupMain.nodes or [ ] // groupOverride.nodes or [ ]);
+        inherit children nodes;
       };
     in
     {
@@ -573,11 +472,21 @@ let
           v = lib.optionalAttrs (raw != null) (call raw nodeArgs);
         in
         assert lib.assertMsg (lib.isAttrs v)
-          "${lib.optionalString part.override "<override>/"}nodes/${nodeName}/nodes.nix#${attrName} must evaluate to an attribute set";
+          "${lib.optionalString part.override "<override>/"}nodes/${
+            if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
+          } must evaluate to an attribute set";
         assert lib.assertMsg (!(v ? name))
-          "Must not specify \"name\" in ${lib.optionalString part.override "<override>/"}nodes/${nodeName}/nodes.nix#${attrName}";
+          "Must not specify \"name\" in ${lib.optionalString part.override "<override>/"}nodes/${
+            if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
+          }";
         assert lib.assertMsg (!(v ? group))
-          "Must not specify \"group\" in ${lib.optionalString part.override "<override>/"}nodes/${nodeName}/nodes.nix#${attrName}";
+          "Must not specify \"group\" in ${lib.optionalString part.override "<override>/"}nodes/${
+            if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
+          }";
+        assert lib.assertMsg (!(v ? config))
+          "Must not specify \"config\" in ${lib.optionalString part.override "<override>/"}nodes/${
+            if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
+          }";
         v;
       commonMain = loadRaw {
         common = true;
@@ -737,7 +646,13 @@ let
           else
             "Missing nodes/${groupName}/${node}/configuration.nix"
         );
-        paths;
+        paths
+        ++ getPaths base.main "hardware-configuration.nix"
+        ++ getPaths base.override "hardware-configuration.nix"
+        ++ getPaths base.main "common/hardware-configuration.nix"
+        ++ getPaths base.override "common/hardware-configuration.nix"
+        ++ getPaths base.main "${nodeName}/hardware-configuration.nix"
+        ++ getPaths base.override "${nodeName}/hardware-configuration.nix";
       getPaths =
         dir: subpath:
         lib.optionals (dir != "") (
@@ -746,15 +661,6 @@ let
             subpath
           ]}"
         );
-      hardwareConfigurationPaths =
-        if groupName == "" then
-          getPaths base.main "hardware-configuration.nix"
-          ++ getPaths base.override "hardware-configuration.nix"
-        else
-          getPaths base.main "common/hardware-configuration.nix"
-          ++ getPaths base.override "common/hardware-configuration.nix"
-          ++ getPaths base.main "${nodeName}/hardware-configuration.nix"
-          ++ getPaths base.override "${nodeName}/hardware-configuration.nix";
       homeManagerUsers =
         lib.zipAttrsWith
           (userName: paths: {
@@ -825,24 +731,137 @@ let
           lib.warn "secrets.yaml exists in both ${dir} and <override>/${dir}, only using the latter" (
             lib.elemAt paths 1
           );
+      mkSystem =
+        {
+          nixos = inputs.nixpkgs.lib.nixosSystem;
+          darwin = inputs.nix-darwin.lib.darwinSystem;
+        }
+        .${os};
+      nodes = lib.mapAttrs' (
+        name: entity:
+        if entity.type == "node" then
+          lib.nameValuePair (if name == nodeName then "current" else name) (
+            entity.node
+            // {
+              group = if entity.node.group == "" then null else entities.${entity.node.group}.group;
+            }
+          )
+        else
+          lib.nameValuePair name entity.group
+      ) entities;
+      configuration = mkSystem {
+        specialArgs = {
+          inherit inputs nodes;
+          lib' = nodeLib;
+          modules' =
+            {
+              nixos = nixosModules;
+              darwin = darwinModules;
+            }
+            .${os};
+        };
+        modules =
+          [
+            (
+              {
+                config,
+                pkgs,
+                lib,
+                ...
+              }:
+              let
+                inherit (config.nixpkgs.hostPlatform) system;
+                pkgs' = lib.mapAttrs (name: v: pkgs.callPackage v { }) allPkgs;
+              in
+              {
+                _module.args =
+                  {
+                    inherit pkgs';
+                  }
+                  // lib.optionalAttrs (node.channel != "unstable" && allInputs ? nixpkgs-unstable) {
+                    pkgs-unstable = allInputs.nixpkgs-unstable.legacyPackages.${system};
+                  };
+                networking.hostName = lib.mkDefault node.name;
+              }
+            )
+          ]
+          ++
+            lib.optional
+              (
+                node.parititions != null
+                && lib.elem node.parititions.bootType [
+                  "efi"
+                  "bios"
+                ]
+              )
+              {
+                fileSystems."/" = {
+                  device = "/dev/disk/by-partlabel/root";
+                  fsType = node.parititions.format;
+                };
+                swapDevices = lib.optional node.parititions.swan.enable {
+                  device = "/dev/disk/by-partlabel/swap";
+                };
+              }
+          ++ lib.optional (hasSshHostKey base.main || hasSshHostKey base.override) {
+            imports = [ inputs.sops-nix.nixosModules.sops-nix ];
+            services.openssh.hostKeys = [ ];
+            sops.age =
+              {
+                sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+              }
+              // lib.optionalAttrs (secretsYamlPath != "") {
+                defaultSopsFile = lib.mkDefault secretsYamlPath;
+              };
+          }
+          ++ lib.optional (node.os == "nixos") (
+            { pkgs, ... }:
+            {
+              # Needed for syncing fs when deploying
+              environment.systemPackages = [ pkgs.rsync ];
+            }
+          )
+          ++ lib.optional (homeManagerUsers != { }) (
+            { pkgs', ... }:
+            {
+              imports = [
+                {
+                  nixos = inputs.home-manager.nixosModules.home-manager;
+                  darwin = inputs.home-manager.darwinModules.home-manager;
+                }
+                .${os}
+              ];
+              home-manager = {
+                useGlobalPkgs = true;
+                useUserPackages = true;
+                extraSpecialArgs = {
+                  inherit
+                    lib'
+                    pkgs'
+                    inputs
+                    nodes
+                    ;
+                  modules' = homeManagerModules;
+                };
+                users = lib.mapAttrs (
+                  _:
+                  { homePaths }:
+                  {
+                    imports = homePaths;
+                  }
+                ) homeManagerUsers;
+              };
+            }
+          )
+          ++ configurationPaths;
+      };
     in
     {
       type = "node";
-      inherit
-        node
-        inputs
-        configurationPaths
-        hardwareConfigurationPaths
-        homeManagerUsers
-        ;
-      lib = nodeLib;
-      secrets =
-        if hasSshHostKey base.main || hasSshHostKey base.override then
-          {
-            inherit secretsYamlPath;
-          }
-        else
-          null;
+      node = node // {
+        inherit (configuration) config;
+      };
+      inherit configuration;
     };
   importDirOrFile =
     base: name: default:
@@ -911,7 +930,11 @@ in
     if entity.type == "node" then
       {
         inherit (entity) type;
-        node = filterRecursive (n: v: !(lib.isFunction v)) entity.node;
+        node = filterRecursive (n: v: !(lib.isFunction v)) (
+          lib.removeAttrs entity.node (
+            [ "config" ] ++ lib.optional (entity.node.parititions == null) "parititions"
+          )
+        );
       }
     else
       entity

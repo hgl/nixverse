@@ -59,8 +59,8 @@ expectFailure 'tests.selfNodes.nodes.selfNodes' 'nodes/selfNodes/nodes.nix must 
 expectFailure 'tests.selfGroup.nodes.selfGroup' "nodes/selfGroup/group.nix#children must not contain the group's own name"
 expectFailure 'tests.crossRef.nodes.cross' 'circular group containment: cross > cross2 > cross'
 expectFailure 'tests.nodeNodesNameCollision.nodes.n0' 'n0 is defined by two different types of nodes:'
-expectFailure 'tests.groupEmpty.nodes.group' "A definition for option \`children' is not of type"
-expectFailure 'tests.groupEmptyDeep.nodes.group' "A definition for option \`children' is not of type"
+expectFailure 'tests.groupEmpty.nodes.group' "nodes/group/group.nix#children must contain at least one child"
+expectFailure 'tests.groupEmptyDeep.nodes.group' "nodes/group2/group.nix#children must contain at least one child"
 expectFailure 'tests.groupUnknown.nodes.group' 'nodes/group/group.nix#children contains unknown node n0'
 expectFailure 'tests.groupUnknownDeep.nodes.group' 'nodes/group2/group.nix#children contains unknown node n0'
 

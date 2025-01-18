@@ -1,6 +1,6 @@
 {
-  children = [
-    "cross"
-    "node"
-  ];
+  children = {
+    cross = true;
+    node = true;
+  };
 }

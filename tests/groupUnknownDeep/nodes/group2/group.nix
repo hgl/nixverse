@@ -1,3 +1,5 @@
 {
-  children = [ "n0" ];
+  children = {
+    n0 = true;
+  };
 }

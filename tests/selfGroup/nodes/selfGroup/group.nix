@@ -1,3 +1,5 @@
 {
-  children = [ "selfGroup" ];
+  children = {
+    selfGroup = true;
+  };
 }

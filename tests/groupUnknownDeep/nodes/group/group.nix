@@ -1,3 +1,5 @@
 {
-  children = [ "group2" ];
+  children = {
+    group2 = true;
+  };
 }

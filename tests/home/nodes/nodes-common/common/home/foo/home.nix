@@ -1,9 +1,9 @@
-{ lib, node, ... }:
+{ lib, nodes, ... }:
 {
   options = {
     nixverse-test = lib.mkOption {
       type = lib.types.str;
     };
   };
-  config.nixverse-test = node.x;
+  config.nixverse-test = nodes.current.x;
 }

@@ -1,3 +1,5 @@
 {
-  children = [ "cross2" ];
+  children = {
+    cross2 = true;
+  };
 }
