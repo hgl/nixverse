@@ -73,12 +73,12 @@ cmd_node_bootstrap() {
 	rsync_fs /mnt
 }
 
-cmd_node_deploy() {
+cmd_deploy() {
 	local remote_build=1
 	OPTIND=1
-	while getopts 'R' opt; do
+	while getopts 'r' opt; do
 		case $opt in
-		R) remote_build='' ;;
+		r) remote_build='' ;;
 		?) exit 1 ;;
 		esac
 	done
@@ -87,7 +87,9 @@ cmd_node_deploy() {
 	local node_name=$1
 	local ssh_dst=${2-}
 
-	build_node
+	set -x
+	# build_node
+	find_node
 
 	case $node_os in
 	nixos)
@@ -159,7 +161,7 @@ cmd_node_update() {
 	cmd_node_deploy "$@"
 }
 
-cmd_node_state() {
+cmd_show() {
 	local node_name=$1
 	local filter=${2:-.}
 
@@ -507,7 +509,7 @@ find_node() {
 	find_secrets
 	find_node_json
 	IFS=, read -r node_os node_channel node_group < <(
-		jq --raw-output '"\(.os),\(.channel),\(.group)"' <<<"$node_json"
+		jq --raw-output '.node | "\(.os),\(.channel),\(.group)"' <<<"$node_json"
 	)
 	if [[ -z $node_group ]]; then
 		node_base_dir=nodes/$node_name
@@ -622,22 +624,25 @@ find_node_file() {
 find_node_json() {
 	find_flake
 
-	local fn
+	local fn=
 	fn=$(
 		cat <<-EOF
-			{ self, nodes, ... }:
+			entities:
 			let
-				inherit (self) inputs;
-				inherit (inputs.nixpkgs-unstable) lib;
-				lib' = inputs.nixverse-unstable.lib;
-				node = nodes.\${"$node_name"} or null;
+				entity = entities.\${"$node_name"} or null;
 			in
-			if node == null then
+			if entity == null then
 				null
+			else if entity.type == "node" then
+				entity
 			else
-				lib'.filterRecursive
-					(n: v: !(lib.isFunction v))
-					node
+				entity // {
+					group = entity.group // {
+						nodes = builtins.mapAttrs
+							(_: { node, ... }: node)
+							(builtins.intersectAttrs entity.group.nodes entities);
+					};
+				}
 		EOF
 	)
 	local filter
@@ -653,10 +658,12 @@ find_node_json() {
 	node_json=$(
 		nix eval \
 			--json \
+			--no-eval-cache \
 			--no-warn-dirty \
-			--impure "$flake_dir#." \
+			--impure \
 			--apply "$fn" \
-			--show-trace |
+			--show-trace \
+			"$flake_dir#.nodes" |
 			jq "$filter"
 	)
 }

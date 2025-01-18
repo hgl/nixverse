@@ -76,8 +76,8 @@ lsblk \
 	fi
 
 	case $root_format in
-	xfs) mkfs.xfs -f "$root" ;;
 	ext4) mkfs.ext4 "$root" ;;
+	xfs) mkfs.xfs -f "$root" ;;
 	btrfs) mkfs.btrfs --force "$root" ;;
 	esac
 	mount "$root" /mnt

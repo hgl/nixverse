@@ -167,18 +167,14 @@ let
       base,
     }:
     {
-      ${nodeName} =
-        {
-          type = "node";
-        }
-        // loadRawNode {
-          groupName = "";
-          inherit nodeName base;
-          rawNode = {
-            main = lib.optionalAttrs (base.main != "") (import "${base.main}/${base.entrypoint}");
-            override = lib.optionalAttrs (base.override != "") (import "${base.override}/${base.entrypoint}");
-          };
+      ${nodeName} = loadRawNode {
+        groupName = "";
+        inherit nodeName base;
+        rawNode = {
+          main = lib.optionalAttrs (base.main != "") (import "${base.main}/${base.entrypoint}");
+          override = lib.optionalAttrs (base.override != "") (import "${base.override}/${base.entrypoint}");
         };
+      };
     };
   loadNodes =
     {
@@ -209,6 +205,8 @@ let
         );
       rawMain = loadRaw base.main;
       rawOverride = loadRaw base.override;
+      rawCommonMain = rawMain.common or null;
+      rawCommonOverride = rawOverride.common or null;
       nodes =
         lib.zipAttrsWith
           (
@@ -221,8 +219,8 @@ let
               inherit groupName nodeName;
               inherit base;
               rawCommon = {
-                main = rawMain.common or null;
-                override = rawOverride.common or null;
+                main = rawCommonMain;
+                override = rawCommonOverride;
               };
               rawNode =
                 if lib.length raws == 2 then
@@ -250,29 +248,21 @@ let
     {
       ${groupName} = {
         type = "group";
-        group =
-          let
-            names = lib.attrNames nodes;
-          in
-          {
-            children = names;
-            nodes = names;
-          };
+        group = {
+          children = lib.mapAttrs (_: _: true) nodes;
+          nodes = lib.mapAttrs (_: { node, ... }: node) nodes;
+        };
       };
     }
-    // lib.mapAttrs (
-      nodeName: node:
-      {
-        type = "node";
-      }
-      // node
-    ) nodes;
+    // nodes;
   loadGroup =
     {
       groupName,
       base,
     }:
     let
+      groupMain = loadRaw base.main;
+      groupOverride = loadRaw base.override;
       loadRaw =
         dir:
         lib.optionalAttrs (dir != "") (
@@ -343,8 +333,6 @@ let
               path = path ++ [ child ];
             }
         ) children;
-      groupMain = loadRaw base.main;
-      groupOverride = loadRaw base.override;
       children =
         let
           v = groupMain.children or { } // groupOverride.children or { };
@@ -500,7 +488,7 @@ let
       nodeArgs =
         {
           inherit (inputs.nixpkgs) lib;
-          inherit node inputs;
+          inherit inputs nodes;
           lib' = nodeLib;
         }
         // lib.optionalAttrs (groupName != "") {
@@ -655,12 +643,13 @@ let
         ++ getPaths base.override "${nodeName}/hardware-configuration.nix";
       getPaths =
         dir: subpath:
-        lib.optionals (dir != "") (
-          optionalPath "${joinPath [
+        let
+          path = joinPath [
             dir
             subpath
-          ]}"
-        );
+          ];
+        in
+        lib.optionals (dir != "") (if lib.pathExists path then [ path ] else [ ]);
       homeManagerUsers =
         lib.zipAttrsWith
           (userName: paths: {
@@ -714,12 +703,12 @@ let
         ]);
       secretsYamlPath =
         let
-          paths = getPaths base.main "secrets.yaml" ++ getPaths base.override "secrets.yaml";
+          paths = getPaths base.override "secrets.yaml" ++ getPaths base.main "secrets.yaml";
         in
         if lib.length paths == 0 then
           ""
         else if lib.length paths == 1 then
-          lib.elemAt paths 0
+          lib.head paths
         else
           let
             dir = joinPath [
@@ -729,7 +718,7 @@ let
             ];
           in
           lib.warn "secrets.yaml exists in both ${dir} and <override>/${dir}, only using the latter" (
-            lib.elemAt paths 1
+            lib.head paths
           );
       mkSystem =
         {
@@ -740,12 +729,23 @@ let
       nodes = lib.mapAttrs' (
         name: entity:
         if entity.type == "node" then
-          lib.nameValuePair (if name == nodeName then "current" else name) (
-            entity.node
-            // {
-              group = if entity.node.group == "" then null else entities.${entity.node.group}.group;
-            }
-          )
+          let
+            group = if entity.node.group == "" then null else entities.${entity.node.group}.group;
+          in
+          if name == nodeName then
+            lib.nameValuePair "current" (
+              lib.removeAttrs entity.node [ "config" ]
+              // {
+                inherit group;
+              }
+            )
+          else
+            lib.nameValuePair name (
+              entity.node
+              // {
+                inherit group;
+              }
+            )
         else
           lib.nameValuePair name entity.group
       ) entities;
@@ -781,7 +781,7 @@ let
                   // lib.optionalAttrs (node.channel != "unstable" && allInputs ? nixpkgs-unstable) {
                     pkgs-unstable = allInputs.nixpkgs-unstable.legacyPackages.${system};
                   };
-                networking.hostName = lib.mkDefault node.name;
+                networking.hostName = lib.mkDefault nodes.current.name;
               }
             )
           ]
@@ -789,7 +789,7 @@ let
             lib.optional
               (
                 node.parititions != null
-                && lib.elem node.parititions.bootType [
+                && lib.elem node.parititions.boot.type [
                   "efi"
                   "bios"
                 ]
@@ -797,9 +797,9 @@ let
               {
                 fileSystems."/" = {
                   device = "/dev/disk/by-partlabel/root";
-                  fsType = node.parititions.format;
+                  fsType = node.parititions.root.format;
                 };
-                swapDevices = lib.optional node.parititions.swan.enable {
+                swapDevices = lib.optional node.parititions.swap.enable {
                   device = "/dev/disk/by-partlabel/swap";
                 };
               }
@@ -892,8 +892,11 @@ let
     else
       { };
   call = f: args: if lib.isFunction f then f (lib.intersectAttrs (lib.functionArgs f) args) else f;
-  joinPath = parts: "${lib.concatStrings (map (part: if part == "" then "" else "/${part}") parts)}";
-  optionalPath = path: if lib.pathExists path then [ path ] else [ ];
+  joinPath =
+    parts:
+    "${lib.head parts}${
+      lib.concatStrings (map (part: if part == "" then "" else "/${part}") (lib.drop 1 parts))
+    }";
   filterRecursive =
     pred: sl:
     if lib.isAttrs sl then
@@ -925,18 +928,27 @@ in
   );
   nixosConfigurations = loadConfigurations "nixos";
   darwinConfigurations = loadConfigurations "darwin";
-  nodes = lib.mapAttrs (
+  nodes = lib.concatMapAttrs (
     name: entity:
     if entity.type == "node" then
       {
-        inherit (entity) type;
-        node = filterRecursive (n: v: !(lib.isFunction v)) (
-          lib.removeAttrs entity.node (
-            [ "config" ] ++ lib.optional (entity.node.parititions == null) "parititions"
-          )
-        );
+        ${name} = {
+          inherit (entity) type;
+          node = filterRecursive (n: v: !(lib.isFunction v)) (
+            lib.removeAttrs entity.node (
+              [ "config" ] ++ lib.optional (entity.node.parititions == null) "parititions"
+            )
+          );
+        };
       }
     else
-      entity
+      {
+        ${name} = entity // {
+          group = entity.group // {
+            nodes = lib.mapAttrs (_: _: true) entity.group.nodes;
+          };
+        };
+      }
+
   ) entities;
 }
