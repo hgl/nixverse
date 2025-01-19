@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, nodes, ... }:
 {
   options = {
     nixverse-test = lib.mkOption {
@@ -8,7 +8,7 @@
   config = {
     nixpkgs.hostPlatform = "x86_64-linux";
     nixverse-test = {
-      bar = 1;
+      inherit (nodes.current.final) currentCommon currentNode;
     };
   };
 }

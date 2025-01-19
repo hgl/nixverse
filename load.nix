@@ -2,24 +2,18 @@
   lib,
   lib',
 }:
-flakeMain:
+flake:
 let
-  flakeOverride = if flakeMain.inputs ? override then flakeMain.inputs.override else null;
-  allInputs = flakeMain.inputs or { } // flakeOverride.inputs or { };
-  allPkgs =
-    importDirAttrs "${flakeMain}/pkgs"
-    // lib.optionalAttrs (flakeOverride != null) (importDirAttrs "${flakeOverride}/pkgs");
+  allPkgs = importDirAttrs "${flake}/pkgs" // importDirAttrs "${flake}/override/pkgs";
   nixosModules =
-    importDirAttrs "${flakeMain}/modules/nixos"
-    // lib.optionalAttrs (flakeOverride != null) (importDirAttrs "${flakeOverride}/modules/nixos");
+    importDirAttrs "${flake}/modules/nixos"
+    // importDirAttrs "${flake}/override/modules/nixos";
   darwinModules =
-    importDirAttrs "${flakeMain}/modules/darwin"
-    // lib.optionalAttrs (flakeOverride != null) (importDirAttrs "${flakeOverride}/modules/darwin");
+    importDirAttrs "${flake}/modules/darwin"
+    // importDirAttrs "${flake}/override/modules/darwin";
   homeManagerModules =
-    importDirAttrs "${flakeMain}/modules/homeManager"
-    // lib.optionalAttrs (flakeOverride != null) (
-      importDirAttrs "${flakeOverride}/modules/homeManager"
-    );
+    importDirAttrs "${flake}/modules/homeManager"
+    // importDirAttrs "${flake}/override/modules/homeManager";
   loadConfigurations =
     os:
     lib.concatMapAttrs (
@@ -39,17 +33,15 @@ let
         if entity.type == "node" then
           if entity.node.group == "" then
             "${
-              lib.optionalString (!(lib.pathExists "${flakeMain}/nodes/${name}/node.nix")) "<override>/"
+              lib.optionalString (!(lib.pathExists "${flake}/nodes/${name}/node.nix")) "override/"
             }nodes/${name}/node.nix"
           else
             "${
-              lib.optionalString (
-                !(lib.pathExists "${flakeMain}/nodes/${entity.node.group}/nodes.nix")
-              ) "<override>/"
+              lib.optionalString (!(lib.pathExists "${flake}/nodes/${entity.node.group}/nodes.nix")) "override/"
             }nodes/${entity.node.group}/nodes.nix#${name}"
         else
           "${
-            lib.optionalString (!(lib.pathExists "${flakeMain}/nodes/${name}/group.nix")) "<override>/"
+            lib.optionalString (!(lib.pathExists "${flake}/nodes/${name}/group.nix")) "override/"
           }nodes/${name}/group.nix";
       first = lib.elemAt values 0;
       second = lib.elemAt values 1;
@@ -63,11 +55,11 @@ let
     name: base:
     assert lib.assertMsg (name != "common")
       "\"common\" is a reserved node name, cannot be used for ${
-        lib.optionalString (base.main == null) "<override>/"
+        lib.optionalString (base.main == null) "override/"
       }nodes/common/${base.entrypoint}";
     assert lib.assertMsg (name != "current")
       "\"current\" is a reserved node name, cannot be used for ${
-        lib.optionalString (base.main == null) "<override>/"
+        lib.optionalString (base.main == null) "override/"
       }nodes/current/${base.entrypoint}";
     if base.entrypoint == "node.nix" then
       loadNode {
@@ -87,43 +79,56 @@ let
   ) entityDirs;
   entityDirs =
     let
-      dirsMain = loadEntityDirs flakeMain;
-      dirsOverride = lib.optionalAttrs (flakeOverride != null) (loadEntityDirs flakeOverride);
+      dirsMain = loadEntityDirs flake;
+      dirsOverride = loadEntityDirs "${flake}/override";
     in
-    lib.zipAttrsWith
-      (
-        name: dirList:
-        let
-          first = lib.elemAt dirList 0;
-          second = lib.elemAt dirList 1;
-        in
-        {
-          inherit (first) entrypoint;
-        }
-        // (
-          if lib.length dirList == 2 then
-            assert lib.assertMsg (first.entrypoint == second.entrypoint)
-              "Node type mismatch: ${name} is defined both in nodes/${name}/${first.entrypoint} and <override>/nodes/${name}/${second.entrypoint}";
-            {
-              main = first.outPath;
-              override = second.outPath;
-            }
-          else if lib.hasAttr name dirsMain then
-            {
-              main = first.outPath;
-              override = "";
-            }
-          else
-            {
-              main = "";
-              override = first.outPath;
-            }
+    lib.filterAttrs (name: dir: dir != null) (
+      lib.zipAttrsWith
+        (
+          name: dirList:
+          let
+            first = lib.elemAt dirList 0;
+            second = lib.elemAt dirList 1;
+          in
+          (
+            if lib.length dirList == 2 then
+              if first.entrypoint != "" && second.entrypoint != "" then
+                assert lib.assertMsg (first.entrypoint == second.entrypoint)
+                  "Node type mismatch: ${name} is defined both in nodes/${name}/${first.entrypoint} and override/nodes/${name}/${second.entrypoint}";
+                {
+                  inherit (first) entrypoint;
+                  main = first.outPath;
+                  override = second.outPath;
+                }
+              else if first.entrypoint == "" && second.entrypoint == "" then
+                null
+              else
+                {
+                  entrypoint = if first.entrypoint != "" then first.entrypoint else second.entrypoint;
+                  main = first.outPath;
+                  override = second.outPath;
+                }
+            else if first.entrypoint == "" then
+              null
+            else if lib.hasAttr name dirsMain then
+              {
+                inherit (first) entrypoint;
+                main = first.outPath;
+                override = "";
+              }
+            else
+              {
+                inherit (first) entrypoint;
+                main = "";
+                override = first.outPath;
+              }
+          )
         )
-      )
-      [
-        dirsMain
-        dirsOverride
-      ];
+        [
+          dirsMain
+          dirsOverride
+        ]
+    );
   loadEntityDirs =
     dir:
     if lib.pathExists "${dir}/nodes" then
@@ -133,29 +138,20 @@ let
           let
             base = "${dir}/nodes/${name}";
           in
-          if lib.pathExists "${base}/node.nix" then
-            {
-              ${name} = {
-                entrypoint = "node.nix";
-                outPath = base;
-              };
-            }
-          else if lib.pathExists "${base}/nodes.nix" then
-            {
-              ${name} = {
-                entrypoint = "nodes.nix";
-                outPath = base;
-              };
-            }
-          else if lib.pathExists "${base}/group.nix" then
-            {
-              ${name} = {
-                entrypoint = "group.nix";
-                outPath = base;
-              };
-            }
-          else
-            { }
+          {
+            ${name} = {
+              entrypoint =
+                if lib.pathExists "${base}/node.nix" then
+                  "node.nix"
+                else if lib.pathExists "${base}/nodes.nix" then
+                  "nodes.nix"
+                else if lib.pathExists "${base}/group.nix" then
+                  "group.nix"
+                else
+                  "";
+              outPath = base;
+            };
+          }
         else
           { }
       ) (builtins.readDir "${dir}/nodes")
@@ -166,13 +162,17 @@ let
       nodeName,
       base,
     }:
+    let
+      loadRaw =
+        dir: lib.optionalAttrs (dir != "" && lib.pathExists "${dir}/node.nix") (import "${dir}/node.nix");
+    in
     {
       ${nodeName} = loadRawNode {
         groupName = "";
         inherit nodeName base;
         rawNode = {
-          main = lib.optionalAttrs (base.main != "") (import "${base.main}/${base.entrypoint}");
-          override = lib.optionalAttrs (base.override != "") (import "${base.override}/${base.entrypoint}");
+          main = loadRaw base.main;
+          override = loadRaw base.override;
         };
       };
     };
@@ -184,22 +184,22 @@ let
     let
       loadRaw =
         dir:
-        lib.optionalAttrs (dir != "") (
+        lib.optionalAttrs (dir != "" && lib.pathExists "${dir}/nodes.nix") (
           let
             v = import "${dir}/nodes.nix";
             nodeNames = (lib.attrNames v);
           in
           assert lib.assertMsg (lib.isAttrs v)
             "${
-              lib.optionalString (dir == base.override) "<override>/"
+              lib.optionalString (dir == base.override) "override/"
             }nodes/${groupName}/nodes.nix must evaluate to an attribute set";
           assert lib.assertMsg (lib.all (nodeName: nodeName != "current") nodeNames)
             "\"current\" is a reserved node name, cannot be used in ${
-              lib.optionalString (dir == base.override) "<override>/"
+              lib.optionalString (dir == base.override) "override/"
             }nodes/${groupName}/nodes.nix must not contain a node named ${groupName}, which is the same as the group name";
           assert lib.assertMsg (lib.all (nodeName: nodeName == "common" || nodeName != groupName) nodeNames)
             "${
-              lib.optionalString (dir == base.override) "<override>/"
+              lib.optionalString (dir == base.override) "override/"
             }nodes/${groupName}/nodes.nix must not contain a node named ${groupName}, which is the same as the group name";
           v
         );
@@ -272,7 +272,7 @@ let
               (lib.evalModules {
                 modules = [
                   {
-                    _file = "${lib.optionalString (dir == base.override) "<override>/"}nodes/${groupName}/group.nix";
+                    _file = "${lib.optionalString (dir == base.override) "override/"}nodes/${groupName}/group.nix";
                     options.children = lib.mkOption {
                       type = lib.types.attrsOf lib.types.bool;
                     };
@@ -284,25 +284,25 @@ let
           in
           assert lib.assertMsg (lib.isAttrs raw)
             "${
-              lib.optionalString (dir == base.override) "<override>/"
+              lib.optionalString (dir == base.override) "override/"
             }nodes/${groupName}/group.nix must evaluate to an attribute set";
           assert lib.assertMsg (lib.all (name: name != groupName) (lib.attrNames children))
             "${
-              lib.optionalString (dir == base.override) "<override>/"
+              lib.optionalString (dir == base.override) "override/"
             }nodes/${groupName}/group.nix#children must not contain the group's own name";
           assert lib.assertMsg (lib.all (name: name != "common") (lib.attrNames children))
             "\"common\" is a reserved node name, cannot be used in ${
-              lib.optionalString (dir == base.override) "<override>/"
+              lib.optionalString (dir == base.override) "override/"
             }nodes/${groupName}/group.nix#children";
           assert lib.assertMsg (lib.all (name: name != "current") (lib.attrNames children))
             "\"current\" is a reserved node name, cannot be used in ${
-              lib.optionalString (dir == base.override) "<override>/"
+              lib.optionalString (dir == base.override) "override/"
             }nodes/${groupName}/group.nix#children";
           assert lib.all (
             name:
             assert lib.assertMsg (lib.hasAttr name entities)
               "${
-                lib.optionalString (dir == base.override) "<override>/"
+                lib.optionalString (dir == base.override) "override/"
               }nodes/${groupName}/group.nix#children contains unknown node ${name}";
             true
           ) (lib.attrNames children);
@@ -380,7 +380,7 @@ let
               { ${lib.removeSuffix "-unstable" inputName} = input; }
             else
               { }
-          ) allInputs
+          ) flake.inputs
         else
           lib.concatMapAttrs (
             inputName: input:
@@ -394,7 +394,7 @@ let
               { ${lib.removeSuffix "-${channel}" inputName} = input; }
             else
               { }
-          ) allInputs;
+          ) flake.inputs;
       loadLib =
         {
           dir,
@@ -422,8 +422,8 @@ let
         lib.recursiveUpdate libMain libOverride;
       topLib = loadLib {
         dir = {
-          main = flakeMain.outPath;
-          override = lib.optionalString (flakeOverride != null) flakeOverride.outPath;
+          main = flake.outPath;
+          override = "${flake}/override";
         };
         lib' = topLib;
       };
@@ -460,19 +460,19 @@ let
           v = lib.optionalAttrs (raw != null) (call raw nodeArgs);
         in
         assert lib.assertMsg (lib.isAttrs v)
-          "${lib.optionalString part.override "<override>/"}nodes/${
+          "${lib.optionalString part.override "override/"}nodes/${
             if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
           } must evaluate to an attribute set";
         assert lib.assertMsg (!(v ? name))
-          "Must not specify \"name\" in ${lib.optionalString part.override "<override>/"}nodes/${
+          "Must not specify \"name\" in ${lib.optionalString part.override "override/"}nodes/${
             if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
           }";
         assert lib.assertMsg (!(v ? group))
-          "Must not specify \"group\" in ${lib.optionalString part.override "<override>/"}nodes/${
+          "Must not specify \"group\" in ${lib.optionalString part.override "override/"}nodes/${
             if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
           }";
         assert lib.assertMsg (!(v ? config))
-          "Must not specify \"config\" in ${lib.optionalString part.override "<override>/"}nodes/${
+          "Must not specify \"config\" in ${lib.optionalString part.override "override/"}nodes/${
             if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
           }";
         v;
@@ -578,7 +578,7 @@ let
               );
             })
             (lib.optionalAttrs (groupName != "") {
-              _file = "<override>/nodes/${nodeName}/common.nix";
+              _file = "override/nodes/${nodeName}/common.nix";
               config = lib.mkOverride 1001 (
                 lib.intersectAttrs {
                   os = true;
@@ -602,9 +602,9 @@ let
             {
               _file = "${
                 if groupName == "" then
-                  "<override>/nodes/${nodeName}/node.nix"
+                  "override/nodes/${nodeName}/node.nix"
                 else
-                  "<override>/nodes/${groupName}/nodes.nix#${nodeName}"
+                  "override/nodes/${groupName}/nodes.nix#${nodeName}"
               }";
               config = lib.mkOverride 1003 (
                 lib.intersectAttrs {
@@ -632,7 +632,7 @@ let
           if groupName == "" then
             "Missing nodes/${nodeName}/configuration.nix"
           else
-            "Missing nodes/${groupName}/${node}/configuration.nix"
+            "Missing nodes/${groupName}/${nodeName}/configuration.nix"
         );
         paths
         ++ getPaths base.main "hardware-configuration.nix"
@@ -649,7 +649,7 @@ let
             subpath
           ];
         in
-        lib.optionals (dir != "") (if lib.pathExists path then [ path ] else [ ]);
+        if dir != "" && lib.pathExists path then [ path ] else [ ];
       homeManagerUsers =
         lib.zipAttrsWith
           (userName: paths: {
@@ -717,7 +717,7 @@ let
               nodeName
             ];
           in
-          lib.warn "secrets.yaml exists in both ${dir} and <override>/${dir}, only using the latter" (
+          lib.warn "secrets.yaml exists in both ${dir} and override/${dir}, only using the latter" (
             lib.head paths
           );
       mkSystem =
@@ -778,8 +778,8 @@ let
                   {
                     inherit pkgs';
                   }
-                  // lib.optionalAttrs (node.channel != "unstable" && allInputs ? nixpkgs-unstable) {
-                    pkgs-unstable = allInputs.nixpkgs-unstable.legacyPackages.${system};
+                  // lib.optionalAttrs (node.channel != "unstable" && flake.inputs ? nixpkgs-unstable) {
+                    pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
                   };
                 networking.hostName = lib.mkDefault nodes.current.name;
               }
@@ -922,7 +922,7 @@ in
   packages = lib'.forAllSystems (
     system:
     let
-      pkgs = flakeMain.inputs.nixpkgs-unstable.legacyPackages.${system};
+      pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
     in
     lib.mapAttrs (_: v: pkgs.callPackage v { }) allPkgs
   );

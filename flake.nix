@@ -116,6 +116,7 @@
               "groupUnknownDeep"
               "confPath"
               "hwconfPath"
+              "override"
             ]
             {
               inputs = {
