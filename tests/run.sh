@@ -18,18 +18,14 @@ cd "$work"
 
 prefixExpression=$(
 	cat <<-EOF
-		self@{inputs, tests, ...}:
-		let
-			inherit (inputs.nixpkgs) lib;
-			lib' = self.lib;
-		in
+		tests:
 	EOF
 )
 
 expectSuccess() {
 	local expr=$1
 	local expectedResult=$2
-	if ! result=$(nix eval --json --show-trace --apply "$prefixExpression ($expr)" "$flake#self"); then
+	if ! result=$(nix eval --json --show-trace --apply "$prefixExpression ($expr)" "$flake#tests"); then
 		die "$expr failed to evaluate, but it was expected to succeed"
 	fi
 	if [[ ! "$result" == "$expectedResult" ]]; then
@@ -48,12 +44,12 @@ expectFailure() {
 	fi
 }
 
-expectSuccess 'tests.lib.nodes.toplib-node.node.top' '1'
-expectSuccess 'tests.lib.nodes.toplib-nodes-0.node.top' '1'
-expectSuccess 'tests.lib.nodes.toplib-nodes-1.node.top' '2'
-expectSuccess 'lib.intersectAttrs {top=1;x=1;node=1;} tests.lib.nodes.nodelib-node.node' '{"node":4,"top":2,"x":3}'
-expectSuccess 'lib.intersectAttrs {top=1;x=1;node=1;} tests.lib.nodes.nodelib-nodes-0.node' '{"node":4,"top":2,"x":3}'
-expectSuccess 'lib.intersectAttrs {top=1;x=1;node=1;} tests.lib.nodes.nodelib-nodes-1.node' '{"node":5,"top":3,"x":4}'
+expectSuccess 'tests.lib.nodes.toplib-node.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":null,"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.toplib-nodes-0.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":null,"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.commonLib.node.final' '1'
+expectSuccess 'tests.lib.nodes.nodeCommonLib-nodes-0.node.final' '1'
+expectSuccess 'tests.lib.nodes.nodelib-node.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":{"inputs":1,"lib":true,"libP":{"override":"node","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.nodelib-nodes-0.node.final' '{"inputs":1,"lib":true,"libP":{"common":{"inputs":1,"lib":true,"libP":{"override":"common","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"node":{"inputs":1,"lib":true,"libP":{"override":"node","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
 
 expectFailure 'tests.selfNodes.nodes.selfNodes' 'nodes/selfNodes/nodes.nix must not contain a node named selfNodes'
 expectFailure 'tests.selfGroup.nodes.selfGroup' "nodes/selfGroup/group.nix#children must not contain the group's own name"
