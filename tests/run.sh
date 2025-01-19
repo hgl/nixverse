@@ -36,7 +36,7 @@ expectSuccess() {
 expectFailure() {
 	local expr=$1
 	local expectedErrorRegex=$2
-	if result=$(nix eval --json --show-trace --apply "$prefixExpression ($expr)" "$flake#self" 2>"$work/stderr"); then
+	if result=$(nix eval --json --show-trace --apply "$prefixExpression ($expr)" "$flake#tests" 2>"$work/stderr"); then
 		die "$expr evaluated successfully to $result, but it was expected to fail"
 	fi
 	if [[ ! "$(<"$work/stderr")" =~ $expectedErrorRegex ]]; then
@@ -44,12 +44,12 @@ expectFailure() {
 	fi
 }
 
-expectSuccess 'tests.lib.nodes.toplib-node.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":null,"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
-expectSuccess 'tests.lib.nodes.toplib-nodes-0.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":null,"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
-expectSuccess 'tests.lib.nodes.commonLib.node.final' '1'
-expectSuccess 'tests.lib.nodes.nodeCommonLib-nodes-0.node.final' '1'
-expectSuccess 'tests.lib.nodes.nodelib-node.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":{"inputs":1,"lib":true,"libP":{"override":"node","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
-expectSuccess 'tests.lib.nodes.nodelib-nodes-0.node.final' '{"inputs":1,"lib":true,"libP":{"common":{"inputs":1,"lib":true,"libP":{"override":"common","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"node":{"inputs":1,"lib":true,"libP":{"override":"node","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.topLib-node.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":null,"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.topLib-nodes-0.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":null,"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.commonLib-0.node.final' '{"inputs":1,"lib":true,"libP":{"common":{"inputs":1,"lib":true,"libP":{"override":"common","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"node":null,"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.nodeLib-node.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":{"inputs":1,"lib":true,"libP":{"override":"node","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.nodeLib-nodes-0.node.final' '{"inputs":1,"lib":true,"libP":{"common":null,"node":{"inputs":1,"lib":true,"libP":{"override":"node","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.nodes.nodeCommonLib-nodes-0.node.final' '{"inputs":1,"lib":true,"libP":{"common":{"inputs":1,"lib":true,"libP":{"override":"common","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"node":{"inputs":1,"lib":true,"libP":{"override":"node","top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}},"top":{"inputs":1,"lib":true,"libP":{"override":"top"}}}}'
 
 expectFailure 'tests.selfNodes.nodes.selfNodes' 'nodes/selfNodes/nodes.nix must not contain a node named selfNodes'
 expectFailure 'tests.selfGroup.nodes.selfGroup' "nodes/selfGroup/group.nix#children must not contain the group's own name"

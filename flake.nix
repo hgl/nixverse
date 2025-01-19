@@ -29,7 +29,6 @@
       };
     in
     {
-      inherit self;
       load = import ./load.nix {
         inherit lib lib';
       };
@@ -96,25 +95,33 @@
               )
             ) dirs;
         in
-        testLoad
-          [
-            "lib"
-            "selfNodes"
-            "selfGroup"
-            "crossRef"
-            "nodeNodesNameCollision"
-            "groupEmpty"
-            "groupEmptyDeep"
-            "groupUnknown"
-            "groupUnknownDeep"
-            "confPath"
-            "hwconfPath"
-          ]
-          {
-            inputs = {
-              nixpkgs-unstable = nixpkgs;
+        testLoad [ "lib" ] {
+          inputs = {
+            nixpkgs-unstable = nixpkgs;
+            nixpkgsLib-unstable = {
+              lib.global = 1;
             };
-          }
+          };
+        }
+        //
+          testLoad
+            [
+              "selfNodes"
+              "selfGroup"
+              "crossRef"
+              "nodeNodesNameCollision"
+              "groupEmpty"
+              "groupEmptyDeep"
+              "groupUnknown"
+              "groupUnknownDeep"
+              "confPath"
+              "hwconfPath"
+            ]
+            {
+              inputs = {
+                nixpkgs-unstable = nixpkgs;
+              };
+            }
         // testLoad [ "home" ] {
           inputs = {
             nixpkgs-unstable = nixpkgs;

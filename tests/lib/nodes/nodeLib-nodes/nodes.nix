@@ -1,5 +1,5 @@
 {
-  commonLib-0 =
+  nodeLib-nodes-0 =
     {
       lib,
       inputs,

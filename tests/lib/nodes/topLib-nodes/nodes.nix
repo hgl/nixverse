@@ -1,5 +1,5 @@
 {
-  commonLib-0 =
+  topLib-nodes-0 =
     {
       lib,
       inputs,
