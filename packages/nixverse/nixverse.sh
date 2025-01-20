@@ -66,7 +66,7 @@ cmd_node_bootstrap() {
 		args+=(--build-on-remote)
 	fi
 	nixos-anywhere \
-		--flake "$flake_dir#$node_name" \
+		--flake "$flake#$node_name" \
 		"${args[@]}" \
 		"$ssh_dst"
 	ssh "$ssh_dst" nix-env -iA nixos.rsync
@@ -74,51 +74,53 @@ cmd_node_bootstrap() {
 }
 
 cmd_deploy() {
-	local remote_build=1
-	OPTIND=1
-	while getopts 'r' opt; do
-		case $opt in
-		r) remote_build='' ;;
-		?) exit 1 ;;
-		esac
-	done
-	shift $((OPTIND - 1))
+	local entity_name=$1
 
-	local node_name=$1
-	local ssh_dst=${2-}
+	load_entity_type
+	case $entity_type in
+	node)
+		node_name=$entity_name
+		build_node
 
-	set -x
-	# build_node
-	find_node
-
-	case $node_os in
-	nixos)
 		local args=()
-		if [[ -n $ssh_dst ]]; then
+		case $node_os in
+		nixos)
 			args+=(
-				--target-host "$ssh_dst"
-				--use-remote-sudo
-				--fast
+				nixos-rebuild switch
+				--flake "$flake#$node_name"
+				--show-trace
 			)
-		fi
-		if [[ -z $remote_build ]]; then
+			if [[ -n $node_deploy_targetHost ]]; then
+				args+=(--target-host "$node_deploy_targetHost")
+			fi
+			if [[ -n $node_deploy_buildHost ]]; then
+				args+=(
+					--build-host "$node_deploy_buildHost"
+					--fast
+				)
+			fi
+			if [[ -n $node_deploy_sudo ]]; then
+				args+=(--use-remote-sudo)
+			fi
+			;;
+		darwin)
 			args+=(
-				--build-host ''
+				darwin-rebuild switch
+				--flake "$flake#$node_name"
+				--show-trace
 			)
-		fi
-		nixos-rebuild switch \
-			--flake "$flake_dir#$node_name" \
-			--show-trace \
-			"${args[@]}"
-		;;
-	darwin)
-		darwin-rebuild switch \
-			--flake "$flake_dir#$node_name" \
-			--show-trace
-		;;
-	esac
+			;;
+		*)
+			echo >&2 "Unknown node OS: $node_os"
+			return 1
+			;;
+		esac
 
-	rsync_fs
+		NIX_SSHOPTS=$node_deploy_sshOpts "${args[@]}"
+		rsync_fs
+		;;
+	group) ;;
+	esac
 }
 
 cmd_node_rollback() {
@@ -136,7 +138,7 @@ cmd_node_rollback() {
 		)
 	fi
 	nixos-rebuild switch \
-		--flake "$flake_dir#$node_name" \
+		--flake "$flake#$node_name" \
 		"${args[@]}" \
 		--rollback
 }
@@ -154,7 +156,7 @@ cmd_node_clean() {
 cmd_node_update() {
 	find_flake
 
-	pushd "$flake_dir" >/dev/null
+	pushd "$flake" >/dev/null
 	nix flake update
 	popd >/dev/null
 
@@ -162,11 +164,11 @@ cmd_node_update() {
 }
 
 cmd_show() {
-	local node_name=$1
+	local entity_name=$1
 	local filter=${2:-.}
 
-	find_node_json
-	jq --raw-output "$filter" <<<"$node_json"
+	load_entity_json
+	jq --raw-output "$filter" <<<"$entity_json"
 }
 
 cmd_node_secrets() {
@@ -477,40 +479,57 @@ cmd_config() {
 }
 
 find_flake() {
-	if [[ -n ${flake_dir-} ]]; then
+	if [[ -n ${flake-} ]]; then
 		return
 	fi
-	if [[ -n ${FLAKE_DIR-} ]]; then
-		if [[ ! -e $FLAKE_DIR/flake.nix ]]; then
-			echo >&2 "FLAKE_DIR is not a flake directory: $FLAKE_DIR"
+	if [[ -n ${FLAKE-} ]]; then
+		if [[ ! -e $FLAKE/flake.nix ]]; then
+			echo >&2 "FLAKE is not a flake directory: $FLAKE"
 			return 1
 		fi
-		flake_dir=$FLAKE_DIR
+		flake=$FLAKE
 		return
 	fi
-	flake_dir=$PWD
+	flake=$PWD
 	while true; do
-		if [[ -e $flake_dir/flake.nix ]]; then
+		if [[ -e $flake/flake.nix ]]; then
 			return
 		fi
-		if [[ $flake_dir = / ]]; then
+		if [[ $flake = / ]]; then
 			echo >&2 "not in a flake directory: $PWD"
 			return 1
 		fi
-		flake_dir=$(dirname "$flake_dir")
+		flake=$(dirname "$flake")
 	done
 }
 
-find_node() {
+load_entity_type() {
+	if [[ -n ${entity_type-} ]]; then
+		return
+	fi
+	load_entity_json
+	IFS=, read -r entity_type < <(
+		jq --raw-output '.type' <<<"$entity_json"
+	)
+}
+
+load_node() {
 	if [[ -n ${node_os-} ]]; then
 		return
 	fi
-	find_flake
-	find_secrets
-	find_node_json
-	IFS=, read -r node_os node_channel node_group < <(
-		jq --raw-output '.node | "\(.os),\(.channel),\(.group)"' <<<"$node_json"
-	)
+	if [[ $entity_type != nodes ]]; then
+
+		return 1
+	fi
+	IFS=, read -r \
+		node_os node_channel node_group \
+		node_deploy_targetHost node_deploy_buildHost node_deploy_sudo \
+		node_deploy_sshOpts < <(
+			jq --raw-output '.node |
+"\(.os),\(.channel),\(.group),\(.deploy.targetHost),\(.deploy.buildHost),\(
+	if .deploy.buildHost.sudo then 1 else "" end
+),\(.deploy.sshOpts)"' <<<"$entity_json"
+		)
 	if [[ -z $node_group ]]; then
 		node_base_dir=nodes/$node_name
 		node_dir=$node_base_dir
@@ -518,15 +537,6 @@ find_node() {
 		node_base_dir=nodes/$node_group
 		node_dir=$node_base_dir/$node_name
 	fi
-	if [[ -z $secrets_dir ]]; then
-		node_secrets_dir=''
-		node_secrets_base_dir=''
-	else
-		node_secrets_dir=$secrets_dir/$node_dir
-		node_secrets_base_dir=$secrets_dir/$node_base_dir
-	fi
-	node_dir=$flake_dir/$node_dir
-	node_base_dir=$flake_dir/$node_base_dir
 }
 
 find_secrets() {
@@ -536,32 +546,32 @@ find_secrets() {
 
 	find_flake
 	secrets_dir=''
-	if [[ -e $flake_dir/config.json ]]; then
-		secrets_dir=$(jq --raw-output --arg conf "$flake_dir/config.json" '
+	if [[ -e $flake/config.json ]]; then
+		secrets_dir=$(jq --raw-output --arg conf "$flake/config.json" '
 			.secretsSource // empty |
 			if type != "string" or (startswith("/") | not) then
 				"\"secretsSource\" must be an absolute path string: \($conf)" | halt_error(1)
 			else
 				.
 			end
-		' "$flake_dir/config.json")
+		' "$flake/config.json")
 	fi
 	local input_exists
-	input_exists=$(nix flake metadata "$flake_dir" --json |
+	input_exists=$(nix flake metadata "$flake" --json |
 		jq 'if .locks.nodes.secrets then 1 else empty end')
 	if [[ -z $secrets_dir ]] && [[ -z $input_exists ]]; then
-		secrets_dir=$flake_dir
+		secrets_dir=$flake
 		return
 	else
 		if [[ -z $secrets_dir ]]; then
-			echo >&2 "\"secrets\" input is specified in flake.nix, but \"secretsSource\" is not specified in config.json: $flake_dir"
+			echo >&2 "\"secrets\" input is specified in flake.nix, but \"secretsSource\" is not specified in config.json: $flake"
 			return 1
 		fi
 		if [[ -z $input_exists ]]; then
-			echo >&2 "\"secretsSource\" is specified in config.json, but \"secrets\" input is not specified in flake.nix: $flake_dir"
+			echo >&2 "\"secretsSource\" is specified in config.json, but \"secrets\" input is not specified in flake.nix: $flake"
 			return 1
 		fi
-		nix flake update secrets --flake "$flake_dir"
+		nix flake update secrets --flake "$flake"
 	fi
 }
 
@@ -572,10 +582,10 @@ find_node_by_secret_path() {
 	node_name=''
 	node_group=''
 	local p
-	if p=${secret_path#"$flake_dir/"} && [[ $p != "$secret_path" ]]; then
+	if p=${secret_path#"$flake/"} && [[ $p != "$secret_path" ]]; then
 		secret_path=$p
-		secret_base_dir=$flake_dir
-	elif [[ $secrets_dir != "$flake_dir" ]] && p=${secret_path#"$secrets_dir/"} && [[ $p != "$secret_path" ]]; then
+		secret_base_dir=$flake
+	elif [[ $secrets_dir != "$flake" ]] && p=${secret_path#"$secrets_dir/"} && [[ $p != "$secret_path" ]]; then
 		secret_path=$p
 		secret_base_dir=$secrets_dir
 	else
@@ -589,9 +599,9 @@ find_node_by_secret_path() {
 	secret_base_dir=$secret_base_dir/nodes
 	node_name=${secret_path%%/*}
 	secret_path=${secret_path#"$node_name/"}
-	if [[ -e $flake_dir/nodes/$node_name/node.nix ]]; then
+	if [[ -e $flake/nodes/$node_name/node.nix ]]; then
 		find_node
-	elif [[ -e $flake_dir/nodes/$node_name/nodes.nix ]]; then
+	elif [[ -e $flake/nodes/$node_name/nodes.nix ]]; then
 		node_name=${secret_path%%/*}
 		secret_path=${secret_path#"$node_name/"}
 		if [[ $node_name != common ]]; then
@@ -621,7 +631,7 @@ find_node_file() {
 	echo ''
 }
 
-find_node_json() {
+load_entity_json() {
 	find_flake
 
 	local fn=
@@ -629,7 +639,7 @@ find_node_json() {
 		cat <<-EOF
 			entities:
 			let
-				entity = entities.\${"$node_name"} or null;
+				entity = entities.\${"$entity_name"} or null;
 			in
 			if entity == null then
 				null
@@ -649,13 +659,13 @@ find_node_json() {
 	filter=$(
 		cat <<-EOF
 			if . == null then
-				"Unknown node $node_name\n" | halt_error(1)
+				"Unknown node $entity_name\n" | halt_error(1)
 			else
 				.
 			end
 		EOF
 	)
-	node_json=$(
+	entity_json=$(
 		nix eval \
 			--json \
 			--no-eval-cache \
@@ -663,68 +673,22 @@ find_node_json() {
 			--impure \
 			--apply "$fn" \
 			--show-trace \
-			"$flake_dir#.nodes" |
-			jq "$filter"
-	)
-}
-
-find_group_json() {
-	find_flake
-
-	local fn
-	fn=$(
-		cat <<-EOF
-			{ self, nodeGroups, ... }:
-			let
-				inherit (self) inputs;
-				inherit (inputs.nixpkgs-unstable) lib;
-				lib' = inputs.nixverse-unstable.lib;
-				group = nodeGroups.\${"$node_group"} or null;
-			in
-			if group == null then
-				null
-			else
-				lib'.filterRecursive
-					(n: v: !(lib.isFunction v))
-					group
-		EOF
-	)
-	local filter
-	filter=$(
-		cat <<-EOF
-			if . == null then
-				"Unknown group $node_group\n" | halt_error(1)
-			else
-				.
-			end
-		EOF
-	)
-	group_json=$(
-		nix eval \
-			--json \
-			--no-warn-dirty \
-			--impure "$flake_dir#." \
-			--apply "$fn" \
-			--show-trace |
+			"$flake#.nodes" |
 			jq "$filter"
 	)
 }
 
 #shellcheck disable=SC2120
 build_node() {
-	build_node_secrets
-
-	if [[ -e $node_base_dir/Makefile ]]; then
+	load_node
+	if [[ -e $flake/$node_base_dir/Makefile ]]; then
 		NODE_OS=$node_os \
 			NODE_CHANNEL=$node_channel \
 			NODE_NAME=$node_name \
 			NODE_GROUP=$node_group \
 			NODE_BASE_DIR=$node_base_dir \
 			NODE_DIR=$node_dir \
-			FLAKE_DIR=$flake_dir \
-			NODE_SECRETS_BASE_DIR=$node_secrets_base_dir \
-			NODE_SECRETS_DIR=$node_secrets_dir \
-			SECRETS_DIR=$secrets_dir \
+			FLAKE=$flake \
 			make \
 			-C "$node_base_dir" \
 			--no-builtin-rules \
@@ -732,46 +696,6 @@ build_node() {
 			--warn-undefined-variables \
 			"$@"
 	fi
-	if [[ $node_secrets_base_dir != "$node_base_dir" ]] && [[ -e $node_secrets_base_dir/Makefile ]]; then
-		NODE_OS=$node_os \
-			NODE_CHANNEL=$node_channel \
-			NODE_NAME=$node_name \
-			NODE_GROUP=$node_group \
-			NODE_BASE_DIR=$node_base_dir \
-			NODE_DIR=$node_dir \
-			FLAKE_DIR=$flake_dir \
-			NODE_SECRETS_BASE_DIR=$node_secrets_base_dir \
-			NODE_SECRETS_DIR=$node_secrets_dir \
-			SECRETS_DIR=$secrets_dir \
-			make \
-			-C "$node_secrets_base_dir" \
-			--no-builtin-rules \
-			--no-builtin-variables \
-			--warn-undefined-variables \
-			"$@"
-	fi
-}
-
-build_node_secrets() {
-	find_node
-
-	NODE_OS=$node_os \
-		NODE_CHANNEL=$node_channel \
-		NODE_NAME=$node_name \
-		NODE_GROUP=$node_group \
-		NODE_BASE_DIR=$node_base_dir \
-		NODE_DIR=$node_dir \
-		FLAKE_DIR=$flake_dir \
-		NODE_SECRETS_BASE_DIR=$node_secrets_base_dir \
-		NODE_SECRETS_DIR=$node_secrets_dir \
-		SECRETS_DIR=$secrets_dir \
-		make \
-		-C "$flake_dir" \
-		-f @out@/lib/nixverse/secrets.mk \
-		--no-builtin-rules \
-		--no-builtin-variables \
-		--warn-undefined-variables \
-		"$@"
 }
 
 config() {
@@ -779,17 +703,17 @@ config() {
 
 	find_secrets
 	local f
-	if [[ ! -e $flake_dir/config.json ]]; then
+	if [[ ! -e $flake/config.json ]]; then
 		if [[ -z $secrets_dir ]] || [[ ! -e $secrets_dir/config.json ]]; then
 			echo >&2 "config.json does not exist in flake"
 			return 1
 		fi
 		f=$secrets_dir/config.json
 	elif [[ -z $secrets_dir ]] || [[ ! -e $secrets_dir/config.json ]]; then
-		f=$flake_dir/config.json
+		f=$flake/config.json
 	else
 		jq --raw-output --slurp ".[0] * .[1] | $filter" \
-			"$flake_dir/config.json" "$secrets_dir/config.json"
+			"$flake/config.json" "$secrets_dir/config.json"
 		return
 	fi
 	jq --raw-output "$filter" "$f"
@@ -805,7 +729,7 @@ encrypt_root_secrets() {
 	local recipients
 	recipients=$(config '.rootSecretsRecipients // empty | [.] | flatten(1) | join(",")')
 	if [[ -z $recipients ]]; then
-		echo >&2 "Missing \"rootSecretsRecipients\": $flake_dir/config.json"
+		echo >&2 "Missing \"rootSecretsRecipients\": $flake/config.json"
 		return 1
 	fi
 	local args=()
