@@ -4,16 +4,18 @@
 }:
 flake:
 let
-  allPkgs = importDirAttrs "${flake}/pkgs" // importDirAttrs "${flake}/override/pkgs";
+  publicDir = flake.outPath;
+  privateDir = "${publicDir}/private";
+  allPkgs = importDirAttrs "${publicDir}/pkgs" // importDirAttrs "${privateDir}/pkgs";
   nixosModules =
-    importDirAttrs "${flake}/modules/nixos"
-    // importDirAttrs "${flake}/override/modules/nixos";
+    importDirAttrs "${publicDir}/modules/nixos"
+    // importDirAttrs "${privateDir}/modules/nixos";
   darwinModules =
-    importDirAttrs "${flake}/modules/darwin"
-    // importDirAttrs "${flake}/override/modules/darwin";
+    importDirAttrs "${publicDir}/modules/darwin"
+    // importDirAttrs "${privateDir}/modules/darwin";
   homeManagerModules =
-    importDirAttrs "${flake}/modules/homeManager"
-    // importDirAttrs "${flake}/override/modules/homeManager";
+    importDirAttrs "${publicDir}/modules/homeManager"
+    // importDirAttrs "${privateDir}/modules/homeManager";
   loadConfigurations =
     os:
     lib.concatMapAttrs (
@@ -25,111 +27,95 @@ let
       else
         { }
     ) entities;
-  entities = lib.zipAttrsWith (
-    name: values:
-    let
-      desc =
-        entity:
-        if entity.type == "node" then
-          if entity.node.group == "" then
-            "${
-              lib.optionalString (!(lib.pathExists "${flake}/nodes/${name}/node.nix")) "override/"
-            }nodes/${name}/node.nix"
-          else
-            "${
-              lib.optionalString (!(lib.pathExists "${flake}/nodes/${entity.node.group}/nodes.nix")) "override/"
-            }nodes/${entity.node.group}/nodes.nix#${name}"
-        else
-          "${
-            lib.optionalString (!(lib.pathExists "${flake}/nodes/${name}/group.nix")) "override/"
-          }nodes/${name}/group.nix";
-      first = lib.elemAt values 0;
-      second = lib.elemAt values 1;
-    in
-    assert lib.assertMsg (
-      lib.length values == 1
-    ) "${name} is defined by two different types of nodes:\n- ${desc first}\n- ${desc second}";
-    first
-  ) entityList;
-  entityList = lib.mapAttrsToList (
-    name: base:
-    assert lib.assertMsg (name != "common")
-      "\"common\" is a reserved node name, cannot be used for ${
-        lib.optionalString (base.main == null) "override/"
-      }nodes/common/${base.entrypoint}";
-    assert lib.assertMsg (name != "current")
-      "\"current\" is a reserved node name, cannot be used for ${
-        lib.optionalString (base.main == null) "override/"
-      }nodes/current/${base.entrypoint}";
-    if base.entrypoint == "node.nix" then
-      loadNode {
-        nodeName = name;
-        inherit base;
-      }
-    else if base.entrypoint == "nodes.nix" then
-      loadNodes {
-        groupName = name;
-        inherit base;
-      }
-    else
-      loadGroup {
-        groupName = name;
-        inherit base;
-      }
-  ) entityDirs;
-  entityDirs =
-    let
-      dirsMain = loadEntityDirs flake;
-      dirsOverride = loadEntityDirs "${flake}/override";
-    in
-    lib.filterAttrs (name: dir: dir != null) (
-      lib.zipAttrsWith
-        (
-          name: dirList:
-          let
-            first = lib.elemAt dirList 0;
-            second = lib.elemAt dirList 1;
-          in
-          (
-            if lib.length dirList == 2 then
-              if first.entrypoint != "" && second.entrypoint != "" then
-                assert lib.assertMsg (first.entrypoint == second.entrypoint)
-                  "Node type mismatch: ${name} is defined both in nodes/${name}/${first.entrypoint} and override/nodes/${name}/${second.entrypoint}";
-                {
-                  inherit (first) entrypoint;
-                  main = first.outPath;
-                  override = second.outPath;
-                }
-              else if first.entrypoint == "" && second.entrypoint == "" then
-                null
+  entities =
+    lib.zipAttrsWith
+      (
+        name: entityList:
+        let
+          first = lib.elemAt entityList 0;
+          second = lib.elemAt entityList 1;
+          desc =
+            entity:
+            if entity.type == "node" then
+              if entity.node.group == "" then
+                "${
+                  lib.optionalString (!(lib.pathExists "${publicDir}/nodes/${name}/node.nix")) "private/"
+                }nodes/${name}/node.nix"
               else
-                {
-                  entrypoint = if first.entrypoint != "" then first.entrypoint else second.entrypoint;
-                  main = first.outPath;
-                  override = second.outPath;
-                }
-            else if first.entrypoint == "" then
-              null
-            else if lib.hasAttr name dirsMain then
-              {
-                inherit (first) entrypoint;
-                main = first.outPath;
-                override = "";
-              }
+                "${
+                  lib.optionalString (
+                    !(lib.pathExists "${publicDir}/nodes/${entity.node.group}/nodes.nix")
+                  ) "private/"
+                }nodes/${entity.node.group}/nodes.nix#${name}"
             else
-              {
-                inherit (first) entrypoint;
-                main = "";
-                override = first.outPath;
-              }
-          )
+              "${
+                lib.optionalString (!(lib.pathExists "${publicDir}/nodes/${name}/group.nix")) "private/"
+              }nodes/${name}/group.nix";
+        in
+        assert lib.assertMsg (
+          lib.length entityList == 1
+        ) "${name} is defined by two different types of nodes:\n- ${desc first}\n- ${desc second}";
+        first
+      )
+      (
+        lib.mapAttrsToList (
+          name: entityMeta:
+          assert lib.assertMsg (name != "common")
+            "\"common\" is a reserved node name, cannot be used for ${
+              lib.optionalString (!entityMeta.public) "private/"
+            }nodes/common/${entityMeta.type}.nix";
+          assert lib.assertMsg (name != "current")
+            "\"current\" is a reserved node name, cannot be used for ${
+              lib.optionalString (!entityMeta.public) "private/"
+            }nodes/current/${entityMeta.type}.nix";
+          if entityMeta.type == "node" then
+            loadNode name
+          else if entityMeta.type == "nodes" then
+            loadNodes name
+          else
+            loadGroup name
+        ) entitiesMeta
+      );
+  entitiesMeta =
+    let
+      typesPublic = loadEntityTypes publicDir;
+      typesPrivate = loadEntityTypes privateDir;
+    in
+    lib.zipAttrsWith
+      (
+        name: dirList:
+        let
+          first = lib.elemAt dirList 0;
+          second = lib.elemAt dirList 1;
+        in
+        (
+          if lib.length dirList == 2 then
+            assert lib.assertMsg (first == second)
+              "Node type mismatch: ${name} is defined both in nodes/${name}/${first}.nix and private/nodes/${name}/${second}.nix";
+            {
+              type = first;
+              public = true;
+              private = true;
+            }
+          else if lib.hasAttr name typesPublic then
+            {
+              type = first;
+              public = true;
+              private = false;
+            }
+          else
+            {
+              type = first;
+              public = false;
+              private = true;
+            }
         )
-        [
-          dirsMain
-          dirsOverride
-        ]
-    );
-  loadEntityDirs =
+      )
+      [
+        typesPublic
+        typesPrivate
+      ];
+  loadEntityTypes =
     dir:
     if lib.pathExists "${dir}/nodes" then
       lib.concatMapAttrs (
@@ -138,75 +124,70 @@ let
           let
             base = "${dir}/nodes/${name}";
           in
-          {
-            ${name} = {
-              entrypoint =
-                if lib.pathExists "${base}/node.nix" then
-                  "node.nix"
-                else if lib.pathExists "${base}/nodes.nix" then
-                  "nodes.nix"
-                else if lib.pathExists "${base}/group.nix" then
-                  "group.nix"
-                else
-                  "";
-              outPath = base;
-            };
-          }
+          if lib.pathExists "${base}/node.nix" then
+            { ${name} = "node"; }
+          else if lib.pathExists "${base}/nodes.nix" then
+            { ${name} = "nodes"; }
+          else if lib.pathExists "${base}/group.nix" then
+            { ${name} = "group"; }
+          else
+            { }
         else
           { }
       ) (builtins.readDir "${dir}/nodes")
     else
       { };
   loadNode =
-    {
-      nodeName,
-      base,
-    }:
+    nodeName:
     let
       loadRaw =
-        dir: lib.optionalAttrs (dir != "" && lib.pathExists "${dir}/node.nix") (import "${dir}/node.nix");
+        dir:
+        let
+          path = "${dir}/nodes/${nodeName}/node.nix";
+        in
+        lib.optionalAttrs (lib.pathExists path) (import path);
     in
     {
       ${nodeName} = loadRawNode {
         groupName = "";
-        inherit nodeName base;
+        inherit nodeName;
         rawNode = {
-          main = loadRaw base.main;
-          override = loadRaw base.override;
+          public = loadRaw publicDir;
+          private = loadRaw privateDir;
         };
       };
     };
   loadNodes =
-    {
-      groupName,
-      base,
-    }:
+    groupName:
     let
       loadRaw =
         dir:
-        lib.optionalAttrs (dir != "" && lib.pathExists "${dir}/nodes.nix") (
+        let
+          path = "${dir}/nodes/${groupName}/nodes.nix";
+        in
+        lib.optionalAttrs (lib.pathExists path) (
           let
-            v = import "${dir}/nodes.nix";
+            v = import path;
             nodeNames = (lib.attrNames v);
           in
           assert lib.assertMsg (lib.isAttrs v)
             "${
-              lib.optionalString (dir == base.override) "override/"
+              lib.optionalString (dir == privateDir) "private/"
             }nodes/${groupName}/nodes.nix must evaluate to an attribute set";
           assert lib.assertMsg (lib.all (nodeName: nodeName != "current") nodeNames)
             "\"current\" is a reserved node name, cannot be used in ${
-              lib.optionalString (dir == base.override) "override/"
+              lib.optionalString (dir == privateDir) "private/"
             }nodes/${groupName}/nodes.nix must not contain a node named ${groupName}, which is the same as the group name";
           assert lib.assertMsg (lib.all (nodeName: nodeName == "common" || nodeName != groupName) nodeNames)
             "${
-              lib.optionalString (dir == base.override) "override/"
+              lib.optionalString (dir == privateDir) "private/"
             }nodes/${groupName}/nodes.nix must not contain a node named ${groupName}, which is the same as the group name";
           v
         );
-      rawMain = loadRaw base.main;
-      rawOverride = loadRaw base.override;
-      rawCommonMain = rawMain.common or null;
-      rawCommonOverride = rawOverride.common or null;
+      rawPublic = loadRaw publicDir;
+      rawPrivate = loadRaw privateDir;
+      rawCommonPublic = rawPublic.common or null;
+      rawCommonPrivate = rawPrivate.common or null;
       nodes =
         lib.zipAttrsWith
           (
@@ -217,32 +198,31 @@ let
             in
             loadRawNode {
               inherit groupName nodeName;
-              inherit base;
               rawCommon = {
-                main = rawCommonMain;
-                override = rawCommonOverride;
+                public = rawCommonPublic;
+                private = rawCommonPrivate;
               };
               rawNode =
                 if lib.length raws == 2 then
                   {
-                    main = first;
-                    override = second;
+                    public = first;
+                    private = second;
                   }
-                else if lib.hasAttr nodeName rawMain then
+                else if lib.hasAttr nodeName rawPublic then
                   {
-                    main = first;
-                    override = null;
+                    public = first;
+                    private = null;
                   }
                 else
                   {
-                    main = null;
-                    override = first;
+                    public = null;
+                    private = first;
                   };
             }
           )
           ([
-            (lib.removeAttrs rawMain [ "common" ])
-            (lib.removeAttrs rawOverride [ "common" ])
+            (lib.removeAttrs rawPublic [ "common" ])
+            (lib.removeAttrs rawPrivate [ "common" ])
           ]);
     in
     {
@@ -256,23 +236,23 @@ let
     }
     // nodes;
   loadGroup =
-    {
-      groupName,
-      base,
-    }:
+    groupName:
     let
-      groupMain = loadRaw base.main;
-      groupOverride = loadRaw base.override;
+      groupPublic = loadRaw publicDir;
+      groupPrivate = loadRaw privateDir;
       loadRaw =
         dir:
-        lib.optionalAttrs (dir != "") (
+        let
+          path = "${dir}/nodes/${groupName}/group.nix";
+        in
+        lib.optionalAttrs (lib.pathExists path) (
           let
-            raw = import "${dir}/group.nix";
+            raw = import path;
             v =
               (lib.evalModules {
                 modules = [
                   {
-                    _file = "${lib.optionalString (dir == base.override) "override/"}nodes/${groupName}/group.nix";
+                    _file = "${lib.optionalString (dir == privateDir) "private/"}nodes/${groupName}/group.nix";
                     options.children = lib.mkOption {
                       type = lib.types.attrsOf lib.types.bool;
                     };
@@ -284,25 +264,25 @@ let
           in
           assert lib.assertMsg (lib.isAttrs raw)
             "${
-              lib.optionalString (dir == base.override) "override/"
+              lib.optionalString (dir == privateDir) "private/"
             }nodes/${groupName}/group.nix must evaluate to an attribute set";
           assert lib.assertMsg (lib.all (name: name != groupName) (lib.attrNames children))
             "${
-              lib.optionalString (dir == base.override) "override/"
+              lib.optionalString (dir == privateDir) "private/"
             }nodes/${groupName}/group.nix#children must not contain the group's own name";
           assert lib.assertMsg (lib.all (name: name != "common") (lib.attrNames children))
             "\"common\" is a reserved node name, cannot be used in ${
-              lib.optionalString (dir == base.override) "override/"
+              lib.optionalString (dir == privateDir) "private/"
             }nodes/${groupName}/group.nix#children";
           assert lib.assertMsg (lib.all (name: name != "current") (lib.attrNames children))
             "\"current\" is a reserved node name, cannot be used in ${
-              lib.optionalString (dir == base.override) "override/"
+              lib.optionalString (dir == privateDir) "private/"
             }nodes/${groupName}/group.nix#children";
           assert lib.all (
             name:
             assert lib.assertMsg (lib.hasAttr name entities)
               "${
-                lib.optionalString (dir == base.override) "override/"
+                lib.optionalString (dir == privateDir) "private/"
               }nodes/${groupName}/group.nix#children contains unknown node ${name}";
             true
           ) (lib.attrNames children);
@@ -335,7 +315,7 @@ let
         ) children;
       children =
         let
-          v = groupMain.children or { } // groupOverride.children or { };
+          v = groupPublic.children or { } // groupPrivate.children or { };
         in
         assert lib.assertMsg (
           v != { }
@@ -365,40 +345,55 @@ let
     {
       groupName,
       nodeName,
-      base,
       rawCommon ? null,
       rawNode,
     }:
     let
+      commonSubdir = "nodes/${groupName}/common";
+      nodeSubdir = joinPath [
+        "nodes"
+        groupName
+        nodeName
+      ];
+      entrypointLoc =
+        {
+          common,
+          pubic,
+        }:
+        "${lib.optionalString (!pubic) "private/"}nodes/${
+          if groupName == "" then
+            "${nodeName}/node.nix"
+          else
+            "${groupName}/nodes.nix#${if common then "common" else nodeName}"
+        }";
       inputs =
         if channel == "unstable" then
           lib.concatMapAttrs (
-            inputName: input:
-            if lib.hasSuffix "-unstable-${os}" inputName then
-              { ${lib.removeSuffix "-unstable-${os}" inputName} = input; }
-            else if lib.hasSuffix "-unstable" inputName then
-              { ${lib.removeSuffix "-unstable" inputName} = input; }
+            name: input:
+            if lib.hasSuffix "-unstable-${os}" name then
+              { ${lib.removeSuffix "-unstable-${os}" name} = input; }
+            else if lib.hasSuffix "-unstable" name then
+              { ${lib.removeSuffix "-unstable" name} = input; }
             else
               { }
           ) flake.inputs
         else
           lib.concatMapAttrs (
-            inputName: input:
-            if lib.hasSuffix "-unstable-${os}" inputName then
-              { ${lib.removeSuffix "-${os}" inputName} = input; }
-            else if lib.hasSuffix "-unstable" inputName then
-              { ${inputName} = input; }
-            else if lib.hasSuffix "-${channel}-${os}" inputName then
-              { ${lib.removeSuffix "-${channel}-${os}" inputName} = input; }
-            else if lib.hasSuffix "-${channel}" inputName then
-              { ${lib.removeSuffix "-${channel}" inputName} = input; }
+            name: input:
+            if lib.hasSuffix "-unstable-${os}" name then
+              { ${lib.removeSuffix "-${os}" name} = input; }
+            else if lib.hasSuffix "-unstable" name then
+              { ${name} = input; }
+            else if lib.hasSuffix "-${channel}-${os}" name then
+              { ${lib.removeSuffix "-${channel}-${os}" name} = input; }
+            else if lib.hasSuffix "-${channel}-any" name then
+              { ${lib.removeSuffix "-${channel}-any" name} = input; }
             else
               { }
           ) flake.inputs;
       loadLib =
         {
-          dir,
-          subdir ? "",
+          subdir,
           lib',
         }:
         let
@@ -406,85 +401,65 @@ let
             inherit (inputs.nixpkgs) lib;
             inherit inputs lib';
           };
-          libMain = lib.optionalAttrs (dir.main != "") (
-            call (importDirOrFile (joinPath [
-              dir.main
-              subdir
-            ]) "lib" { }) args
-          );
-          libOverride = lib.optionalAttrs (dir.override != "") (
-            call (importDirOrFile (joinPath [
-              dir.override
-              subdir
-            ]) "lib" { }) args
-          );
+          libPublic = call (importDirOrFile (joinPath [
+            publicDir
+            subdir
+          ]) "lib" { }) args;
+          libPrivate = call (importDirOrFile (joinPath [
+            privateDir
+            subdir
+          ]) "lib" { }) args;
         in
-        lib.recursiveUpdate libMain libOverride;
+        lib.recursiveUpdate libPublic libPrivate;
       topLib = loadLib {
-        dir = {
-          main = flake.outPath;
-          override = "${flake}/override";
-        };
+        subdir = "";
         lib' = topLib;
       };
       nodeLib =
         if groupName == "" then
           lib.recursiveUpdate topLib (loadLib {
-            dir = base;
+            subdir = nodeSubdir;
             lib' = nodeLib;
           })
         else
           let
             groupLib = lib.recursiveUpdate topLib (loadLib {
-              dir = base;
-              subdir = "common";
+              subdir = commonSubdir;
               lib' = groupLib;
             });
           in
           lib.recursiveUpdate groupLib (loadLib {
-            dir = base;
-            subdir = nodeName;
+            subdir = nodeSubdir;
             lib' = nodeLib;
           });
       loadRaw =
-        part:
+        {
+          pubic,
+          common,
+        }:
         let
-          raw =
-            if part.common then
-              if !part.override then rawCommon.main else rawCommon.override
-            else if !part.override then
-              rawNode.main
-            else
-              rawNode.override;
-          attrName = if part.common then "common" else nodeName;
+          rawPart = if pubic then "public" else "private";
+          raw = if common then rawCommon.${rawPart} else rawNode.${rawPart};
           v = lib.optionalAttrs (raw != null) (call raw nodeArgs);
         in
         assert lib.assertMsg (lib.isAttrs v)
-          "${lib.optionalString part.override "override/"}nodes/${
-            if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
-          } must evaluate to an attribute set";
+          "${entrypointLoc { inherit pubic common; }} must evaluate to an attribute set";
         assert lib.assertMsg (!(v ? name))
-          "Must not specify \"name\" in ${lib.optionalString part.override "override/"}nodes/${
-            if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
-          }";
+          "Must not specify \"name\" in ${entrypointLoc { inherit pubic common; }}";
         assert lib.assertMsg (!(v ? group))
-          "Must not specify \"group\" in ${lib.optionalString part.override "override/"}nodes/${
-            if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
-          }";
+          "Must not specify \"group\" in ${entrypointLoc { inherit pubic common; }}";
         assert lib.assertMsg (!(v ? config))
-          "Must not specify \"config\" in ${lib.optionalString part.override "override/"}nodes/${
-            if groupName == "" then "${nodeName}/node.nix" else "${groupName}/nodes.nix#${attrName}"
-          }";
+          "Must not specify \"config\" in ${entrypointLoc { inherit pubic common; }}";
         v;
-      commonMain = loadRaw {
+      commonPublic = loadRaw {
+        pubic = true;
         common = true;
-        override = false;
       };
-      commonOverride = loadRaw {
+      commonPrivate = loadRaw {
+        pubic = false;
         common = true;
-        override = true;
       };
-      common = lib.recursiveUpdate commonMain commonOverride;
+      common = lib.recursiveUpdate commonPublic commonPrivate;
       nodeArgs =
         {
           inherit (inputs.nixpkgs) lib;
@@ -494,31 +469,35 @@ let
         // lib.optionalAttrs (groupName != "") {
           inherit common;
         };
-      nodeMain = loadRaw {
+      nodePublic = loadRaw {
+        pubic = true;
         common = false;
-        override = false;
       };
-      nodeOverride = loadRaw {
+      nodePrivate = loadRaw {
+        pubic = false;
         common = false;
-        override = true;
       };
       node =
         let
           n = lib.recursiveUpdate (lib.optionalAttrs (groupName != "") common) (
-            lib.recursiveUpdate nodeMain nodeOverride
+            lib.recursiveUpdate nodePublic nodePrivate
           );
         in
         assert lib.assertMsg (n ? os) (
-          if groupName == "" then
-            "Missing \"os\" in nodes/${nodeName}/node.nix"
-          else
-            "Missing \"os\" in nodes/${groupName}/nodes.nix#${nodeName}"
+          "Missing \"os\" in ${
+            entrypointLoc {
+              pubic = true;
+              common = false;
+            }
+          }"
         );
         assert lib.assertMsg (n ? channel) (
-          if groupName == "" then
-            "Missing \"channel\" in nodes/${nodeName}/node.nix"
-          else
-            "Missing \"channel\" in nodes/${groupName}/nodes.nix#${nodeName}"
+          "Missing \"channel\" in ${
+            entrypointLoc {
+              pubic = true;
+              common = false;
+            }
+          }"
         );
         n
         // {
@@ -569,49 +548,55 @@ let
               };
             }
             (lib.optionalAttrs (groupName != "") {
-              _file = "nodes/${nodeName}/common.nix";
+              _file = entrypointLoc {
+                pubic = true;
+                common = true;
+              };
               config = lib.mkOverride 1000 (
                 lib.intersectAttrs {
                   os = true;
                   channel = true;
-                } commonMain
+                  parititions = true;
+                } commonPublic
               );
             })
             (lib.optionalAttrs (groupName != "") {
-              _file = "override/nodes/${nodeName}/common.nix";
+              _file = entrypointLoc {
+                pubic = false;
+                common = true;
+              };
               config = lib.mkOverride 1001 (
                 lib.intersectAttrs {
                   os = true;
                   channel = true;
                   parititions = true;
-                } commonOverride
+                } commonPrivate
               );
             })
             {
-              _file = "${
-                if groupName == "" then "nodes/${nodeName}/node.nix" else "nodes/${groupName}/nodes.nix#${nodeName}"
-              }";
+              _file = entrypointLoc {
+                pubic = true;
+                common = false;
+              };
               config = lib.mkOverride 1002 (
                 lib.intersectAttrs {
                   os = true;
                   channel = true;
                   parititions = true;
-                } nodeMain
+                } nodePublic
               );
             }
             {
-              _file = "${
-                if groupName == "" then
-                  "override/nodes/${nodeName}/node.nix"
-                else
-                  "override/nodes/${groupName}/nodes.nix#${nodeName}"
-              }";
+              _file = entrypointLoc {
+                pubic = false;
+                common = false;
+              };
               config = lib.mkOverride 1003 (
                 lib.intersectAttrs {
                   os = true;
                   channel = true;
                   parititions = true;
-                } nodeOverride
+                } nodePrivate
               );
             }
           ];
@@ -621,103 +606,75 @@ let
         let
           paths =
             if groupName == "" then
-              getPaths base.main "configuration.nix" ++ getPaths base.override "configuration.nix"
+              optionalPath "${publicDir}/${nodeSubdir}/configuration.nix"
+              ++ optionalPath "${privateDir}/${nodeSubdir}/configuration.nix"
             else
-              getPaths base.main "common/configuration.nix"
-              ++ getPaths base.override "common/configuration.nix"
-              ++ getPaths base.main "${nodeName}/configuration.nix"
-              ++ getPaths base.override "${nodeName}/configuration.nix";
+              optionalPath "${publicDir}/${commonSubdir}/configuration.nix"
+              ++ optionalPath "${privateDir}/${commonSubdir}/configuration.nix"
+              ++ optionalPath "${publicDir}/${nodeSubdir}/configuration.nix"
+              ++ optionalPath "${privateDir}/${nodeSubdir}/configuration.nix";
         in
-        assert lib.assertMsg (lib.length paths != 0) (
-          if groupName == "" then
-            "Missing nodes/${nodeName}/configuration.nix"
-          else
-            "Missing nodes/${groupName}/${nodeName}/configuration.nix"
-        );
+        assert lib.assertMsg (lib.length paths != 0)
+          "Missing nodes${
+            lib.optionalString (groupName != "") "/${groupName}"
+          }/${nodeName}/configuration.nix";
         paths
-        ++ getPaths base.main "hardware-configuration.nix"
-        ++ getPaths base.override "hardware-configuration.nix"
-        ++ getPaths base.main "common/hardware-configuration.nix"
-        ++ getPaths base.override "common/hardware-configuration.nix"
-        ++ getPaths base.main "${nodeName}/hardware-configuration.nix"
-        ++ getPaths base.override "${nodeName}/hardware-configuration.nix";
-      getPaths =
-        dir: subpath:
-        let
-          path = joinPath [
-            dir
-            subpath
-          ];
-        in
-        if dir != "" && lib.pathExists path then [ path ] else [ ];
+        ++ (
+          lib.optionals (groupName != "") (
+            optionalPath "${publicDir}/${commonSubdir}/hardware-configuration.nix"
+            ++ optionalPath "${privateDir}/${commonSubdir}/hardware-configuration.nix"
+          )
+          ++ optionalPath "${publicDir}/${nodeSubdir}/hardware-configuration.nix"
+          ++ optionalPath "${privateDir}/${nodeSubdir}/hardware-configuration.nix"
+        );
       homeManagerUsers =
         lib.zipAttrsWith
           (userName: paths: {
             homePaths = paths;
           })
           (
-            if groupName == "" then
-              getHomePaths base.main "" ++ getHomePaths base.override ""
-            else
-              getHomePaths base.main "common"
-              ++ getHomePaths base.override "common"
-              ++ getHomePaths base.main nodeName
-              ++ getHomePaths base.override nodeName
+            lib.optionals (groupName != "") (
+              getHomePaths "${publicDir}/${commonSubdir}" ++ getHomePaths "${privateDir}/${commonSubdir}"
+            )
+            ++ getHomePaths "${publicDir}/${nodeSubdir}"
+            ++ getHomePaths "${privateDir}/${nodeSubdir}"
           );
       getHomePaths =
-        dir: subdir:
-        let
-          findPaths =
-            dir:
-            let
-              d = "${dir}/home";
-            in
-            if lib.pathExists d then
-              lib'.concatMapAttrsToList (
-                userName: v:
-                if v == "directory" && lib.pathExists "${d}/${userName}/home.nix" then
-                  [
-                    {
-                      ${userName} = "${d}/${userName}/home.nix";
-                    }
-                  ]
-                else
-                  [ ]
-              ) (builtins.readDir d)
-            else
-              [ ];
-        in
-        lib.optionals (dir != "") (
-          findPaths (joinPath [
-            dir
-            subdir
-          ])
-        );
-      hasSshHostKey =
         dir:
-        dir != ""
-        && lib.pathExists (joinPath [
-          "${dir}/nodes"
-          groupName
-          "${nodeName}/fs/etc/ssh/ssh_host_ed25519_key.pub"
-        ]);
+        let
+          d = "${dir}/home";
+        in
+        if lib.pathExists d then
+          lib'.concatMapAttrsToList (
+            userName: v:
+            if v == "directory" && lib.pathExists "${d}/${userName}/home.nix" then
+              [
+                {
+                  ${userName} = "${d}/${userName}/home.nix";
+                }
+              ]
+            else
+              [ ]
+          ) (builtins.readDir d)
+        else
+          [ ];
+      hasSshHostKey =
+        let
+          subpath = "${nodeSubdir}/fs/etc/ssh/ssh_host_ed25519_key.pub";
+        in
+        lib.pathExists "${privateDir}/${subpath}" || lib.pathExists "${publicDir}/${subpath}";
       secretsYamlPath =
         let
-          paths = getPaths base.override "secrets.yaml" ++ getPaths base.main "secrets.yaml";
+          paths =
+            optionalPath "${privateDir}/${nodeSubdir}/secrets.yaml"
+            ++ optionalPath "${publicDir}/${nodeSubdir}/secrets.yaml";
         in
         if lib.length paths == 0 then
           ""
         else if lib.length paths == 1 then
           lib.head paths
         else
-          let
-            dir = joinPath [
-              "nodes"
-              groupName
-              nodeName
-            ];
-          in
-          lib.warn "secrets.yaml exists in both ${dir} and override/${dir}, only using the latter" (
+          lib.warn "secrets.yaml exists in both ${nodeSubdir} and private/${nodeSubdir}, only using the latter" (
             lib.head paths
           );
       mkSystem =
@@ -803,8 +760,8 @@ let
                   device = "/dev/disk/by-partlabel/swap";
                 };
               }
-          ++ lib.optional (hasSshHostKey base.main || hasSshHostKey base.override) {
-            imports = [ inputs.sops-nix.nixosModules.sops-nix ];
+          ++ lib.optional hasSshHostKey {
+            imports = [ inputs.sops-nix.nixosModules.sops ];
             services.openssh.hostKeys = [ ];
             sops.age =
               {
@@ -897,6 +854,7 @@ let
     "${lib.head parts}${
       lib.concatStrings (map (part: if part == "" then "" else "/${part}") (lib.drop 1 parts))
     }";
+  optionalPath = path: if lib.pathExists path then [ path ] else [ ];
   filterRecursive =
     pred: sl:
     if lib.isAttrs sl then
@@ -928,27 +886,23 @@ in
   );
   nixosConfigurations = loadConfigurations "nixos";
   darwinConfigurations = loadConfigurations "darwin";
-  nodes = lib.concatMapAttrs (
-    name: entity:
+  nodes = lib.mapAttrs (
+    _: entity:
     if entity.type == "node" then
       {
-        ${name} = {
-          inherit (entity) type;
-          node = filterRecursive (n: v: !(lib.isFunction v)) (
-            lib.removeAttrs entity.node (
-              [ "config" ] ++ lib.optional (entity.node.parititions == null) "parititions"
-            )
-          );
-        };
+        inherit (entity) type;
+        node = filterRecursive (n: v: !(lib.isFunction v)) (
+          lib.removeAttrs entity.node (
+            [ "config" ] ++ lib.optional (entity.node.parititions == null) "parititions"
+          )
+        );
       }
     else
-      {
-        ${name} = entity // {
-          group = entity.group // {
-            nodes = lib.mapAttrs (_: _: true) entity.group.nodes;
-          };
+      entity
+      // {
+        group = entity.group // {
+          nodes = lib.mapAttrs (_: _: true) entity.group.nodes;
         };
       }
-
   ) entities;
 }
