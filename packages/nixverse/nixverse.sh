@@ -29,8 +29,6 @@ cmd_node_bootstrap() {
 	local node_name=$1
 	local ssh_dst=${2-}
 
-	build_node
-
 	local use_disko=''
 	local f
 	if f=$(find_node_file partition.bash) && [[ -n $f ]]; then
@@ -76,52 +74,74 @@ cmd_node_bootstrap() {
 cmd_deploy() {
 	local entity_name=$1
 
+	local node_names
 	load_entity_type
 	case $entity_type in
 	node)
-		node_name=$entity_name
+		node_names=$entity_name
 		build_node
 
 		local args=()
-		case $node_os in
-		nixos)
-			args+=(
-				nixos-rebuild switch
-				--flake "$flake#$node_name"
-				--show-trace
-			)
-			if [[ -n $node_deploy_targetHost ]]; then
-				args+=(--target-host "$node_deploy_targetHost")
-			fi
-			if [[ -n $node_deploy_buildHost ]]; then
-				args+=(
-					--build-host "$node_deploy_buildHost"
-					--fast
-				)
-			fi
-			if [[ -n $node_deploy_sudo ]]; then
-				args+=(--use-remote-sudo)
-			fi
-			;;
-		darwin)
-			args+=(
-				darwin-rebuild switch
-				--flake "$flake#$node_name"
-				--show-trace
-			)
-			;;
-		*)
-			echo >&2 "Unknown node OS: $node_os"
-			return 1
-			;;
-		esac
 
 		NIX_SSHOPTS=$node_deploy_sshOpts "${args[@]}"
 		rsync_fs
 		;;
-	group) ;;
+	group)
+		node_names=$(jq)
+		;;
+	esac
+
+	parallel
+}
+
+deploy_node() {
+	local flake=$1
+	local node_name=$2
+	local node_os=$3
+	local target_host=$4
+	local build_host=$5
+	local sudo=$6
+	local ssh_opts=$7
+
+	build_node
+
+	case $node_os in
+	nixos)
+		local args=()
+		args+=(
+
+		)
+		if [[ -n $target_host ]]; then
+			args+=(--target-host "$target_host")
+		fi
+		if [[ -n $build_host ]]; then
+			args+=(
+				--build-host "$build_host"
+				--fast
+			)
+		fi
+		if [[ -n $sudo ]]; then
+			args+=(--use-remote-sudo)
+		fi
+		NIX_SSHOPTS=$ssh_opts nixos-rebuild switch \
+			--flake "$flake?submodules=1#$node_name" \
+			--show-trace \
+			"${args[@]}"
+		;;
+	darwin)
+		args+=(
+			darwin-rebuild switch
+			--flake "$flake?submodules=1#$node_name"
+			--show-trace
+		)
+		;;
+	*)
+		echo >&2 "Unknown node OS: $node_os"
+		return 1
+		;;
 	esac
 }
+export -f deploy_node
 
 cmd_node_rollback() {
 	local node_name=$1
@@ -168,6 +188,13 @@ cmd_show() {
 	local filter=${2:-.}
 
 	load_entity_json
+	filter=$(
+		cat <<-EOF
+			if .type == "node" then
+				del(.files)
+			end | $filter
+		EOF
+	)
 	jq --raw-output "$filter" <<<"$entity_json"
 }
 
@@ -517,7 +544,7 @@ load_node() {
 	if [[ -n ${node_os-} ]]; then
 		return
 	fi
-	if [[ $entity_type != nodes ]]; then
+	if [[ $entity_type != node ]]; then
 
 		return 1
 	fi
@@ -530,13 +557,6 @@ load_node() {
 	if .deploy.buildHost.sudo then 1 else "" end
 ),\(.deploy.sshOpts)"' <<<"$entity_json"
 		)
-	if [[ -z $node_group ]]; then
-		node_base_dir=nodes/$node_name
-		node_dir=$node_base_dir
-	else
-		node_base_dir=nodes/$node_group
-		node_dir=$node_base_dir/$node_name
-	fi
 }
 
 find_secrets() {
@@ -641,18 +661,7 @@ load_entity_json() {
 			let
 				entity = entities.\${"$entity_name"} or null;
 			in
-			if entity == null then
-				null
-			else if entity.type == "node" then
-				entity
-			else
-				entity // {
-					group = entity.group // {
-						nodes = builtins.mapAttrs
-							(_: { node, ... }: node)
-							(builtins.intersectAttrs entity.group.nodes entities);
-					};
-				}
+			entity
 		EOF
 	)
 	local filter
@@ -670,32 +679,36 @@ load_entity_json() {
 			--json \
 			--no-eval-cache \
 			--no-warn-dirty \
-			--impure \
 			--apply "$fn" \
 			--show-trace \
 			"$flake#.nodes" |
-			jq "$filter"
+			jq \
+				--raw-output \
+				--compact-output \
+				"$filter"
 	)
 }
 
 #shellcheck disable=SC2120
 build_node() {
 	load_node
-	if [[ -e $flake/$node_base_dir/Makefile ]]; then
-		NODE_OS=$node_os \
-			NODE_CHANNEL=$node_channel \
-			NODE_NAME=$node_name \
-			NODE_GROUP=$node_group \
-			NODE_BASE_DIR=$node_base_dir \
-			NODE_DIR=$node_dir \
-			FLAKE=$flake \
-			make \
-			-C "$node_base_dir" \
-			--no-builtin-rules \
-			--no-builtin-variables \
-			--warn-undefined-variables \
-			"$@"
-	fi
+
+	jq \
+		--raw-output \
+		'.files.Makefile[]' <<<"$entity_json" |
+		while read -r f; do
+			dir=$(dirname "$flake/$f")
+			NODE_OS=$node_os \
+				NODE_CHANNEL=$node_channel \
+				NODE_NAME=$node_name \
+				FLAKE=$flake \
+				make \
+				-C "$dir" \
+				--no-builtin-rules \
+				--no-builtin-variables \
+				--warn-undefined-variables \
+				"$@"
+		done
 }
 
 config() {

@@ -82,12 +82,12 @@
             lib'.mapListToAttrs (
               name:
               lib.nameValuePair name (
-                self.load (
-                  {
+                import ./load/load.nix {
+                  inherit lib lib';
+                  flake = {
                     outPath = ./tests/${name};
-                  }
-                  // flake
-                )
+                  } // flake;
+                }
               )
             ) names;
         in
@@ -102,6 +102,7 @@
             "groupEmptyDeep"
             "confPath"
             "hwconfPath"
+            "files"
             "private"
           ]
           {
