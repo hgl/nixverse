@@ -1,0 +1,5 @@
+{
+  nodeA = {
+    x = "nodeAParentB";
+  };
+}

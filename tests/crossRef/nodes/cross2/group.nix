@@ -1,6 +1,3 @@
 {
-  children = {
-    cross = true;
-    node = true;
-  };
+  cross = { };
 }

@@ -29,7 +29,7 @@
       };
     in
     {
-      load = import ./load.nix {
+      load = import ./load {
         inherit lib lib';
       };
       lib = lib';
@@ -78,51 +78,45 @@
       tests =
         let
           testLoad =
-            dirs: flake:
+            names: flake:
             lib'.mapListToAttrs (
-              dir:
-              lib.nameValuePair dir (
-                import ./load.nix
+              name:
+              lib.nameValuePair name (
+                self.load (
                   {
-                    inherit lib lib';
+                    outPath = ./tests/${name};
                   }
-                  (
-                    {
-                      outPath = ./tests/${dir};
-                    }
-                    // flake
-                  )
+                  // flake
+                )
               )
-            ) dirs;
+            ) names;
         in
-        testLoad [ "lib" ] {
+        testLoad
+          [
+            "lib"
+            "group"
+            "selfRef"
+            "crossRef"
+            "groupEmpty"
+            "groupEmptyCommon"
+            "groupEmptyDeep"
+            "confPath"
+            "hwconfPath"
+            "private"
+          ]
+          {
+            inputs = {
+              nixpkgs-unstable = nixpkgs;
+            };
+          }
+        // testLoad [ "nodeArgs" ] {
           inputs = {
             nixpkgs-unstable = nixpkgs;
-            nixpkgsLib-unstable = {
-              lib.global = 1;
+            custom-unstable = {
+              value = 1;
             };
           };
         }
-        //
-          testLoad
-            [
-              "selfNodes"
-              "selfGroup"
-              "crossRef"
-              "nodeNodesNameCollision"
-              "groupEmpty"
-              "groupEmptyDeep"
-              "groupUnknown"
-              "groupUnknownDeep"
-              "confPath"
-              "hwconfPath"
-              "private"
-            ]
-            {
-              inputs = {
-                nixpkgs-unstable = nixpkgs;
-              };
-            }
         // testLoad [ "home" ] {
           inputs = {
             nixpkgs-unstable = nixpkgs;

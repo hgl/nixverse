@@ -1,5 +1,3 @@
 {
-  children = {
-    group2 = true;
-  };
+  group2 = { };
 }
