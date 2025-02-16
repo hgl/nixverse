@@ -19,6 +19,7 @@ let
       // importDirAttrs "${privateDir}/modules/homeManager";
     nixosConfigurations = loadConfigurations "nixos";
     darwinConfigurations = loadConfigurations "darwin";
+    # Expose for tests
     entities = lib.mapAttrs (
       name: entityObj:
       {
@@ -28,24 +29,87 @@ let
       .${entityObj.type}
     ) entityObjs;
     nixverse = {
-      loadShowData =
-        entityName:
+      nodeValue =
+        rawEntityNames:
         let
-          entity = final.entities.${entityName} or null;
+          entityNames =
+            let
+              names = lib.unique rawEntityNames;
+            in
+            assert lib.all (
+              entityName:
+              if lib.hasAttr entityName final.entities then true else throw "Unknown node ${entityName}"
+            ) names;
+            names;
+          findNodeNames =
+            entityNames:
+            lib'.concatMapListToAttrs (
+              entityName:
+              let
+                entity = final.entities.${entityName};
+              in
+              {
+                node = {
+                  ${entityName} = true;
+                };
+                group = findNodeNames entity.childNames;
+              }
+              .${entity.type}
+            ) entityNames;
+          findGroupNames =
+            entityNames: visited:
+            lib'.concatMapListToAttrs (
+              entityName:
+              if lib.hasAttr entityName visited then
+                { }
+              else
+                let
+                  entity = final.entities.${entityName};
+                in
+                {
+                  node = findGroupNames entity.value.parents (
+                    visited
+                    // {
+                      ${entityName} = true;
+                    }
+                  );
+                  group =
+                    {
+                      ${entityName} = true;
+                    }
+                    // findGroupNames (entity.childNames ++ entity.parentNames) (
+                      visited
+                      // {
+                        ${entityName} = true;
+                      }
+                    );
+                }
+                .${entity.type}
+            ) entityNames;
+          nodes = lib.mapAttrs (
+            nodeName: _:
+            let
+              node = final.entities.${nodeName};
+            in
+            filterRecursive (_: v: !(lib.isFunction v)) (lib.removeAttrs node.value [ "config" ])
+          ) (findNodeNames entityNames);
         in
-        if entity == null then
-          null
-        else
-          {
-            node = filterRecursive (n: v: !(lib.isFunction v)) (lib.removeAttrs entity.value [ "config" ]);
-            group = {
-              inherit (entity) type;
-              name = entityName;
-              parents = entity.parentNames;
-              children = entity.childNames;
-            };
-          }
-          .${entity.type};
+        {
+          inherit nodes;
+          groups = lib.mapAttrs (
+            groupName: _:
+            let
+              group = final.entities.${groupName};
+            in
+            {
+              parents = group.parentNames;
+              children = group.childNames;
+              effectiveNodes = lib.filter (nodeName: lib.elem groupName nodes.${nodeName}.parents) (
+                lib.attrNames nodes
+              );
+            }
+          ) (findGroupNames entityNames { });
+        };
       loadDeployData =
         entityName:
         let
@@ -746,7 +810,7 @@ let
     groupName:
     let
       inherit (entityObjs.${groupName}) rawValue parentNames childNames;
-      checkCyclic =
+      cyclic =
         childNames: visited: path:
         lib.any (
           childName:
@@ -757,7 +821,7 @@ let
             "circular group containment: ${lib.concatStringsSep " > " (path ++ [ childName ])}";
           {
             node = false;
-            group = checkCyclic entityObj.childNames (
+            group = cyclic entityObj.childNames (
               visited
               // {
                 ${childName} = true;
@@ -768,7 +832,7 @@ let
         ) childNames;
 
     in
-    assert !checkCyclic childNames { ${groupName} = true; } [ groupName ];
+    assert !cyclic childNames { ${groupName} = true; } [ groupName ];
     {
       type = "group";
       inherit rawValue parentNames childNames;
@@ -901,17 +965,17 @@ let
   filterRecursive =
     pred: v:
     if lib.isAttrs v then
-      lib'.concatMapListToAttrs (
-        name:
-        if pred name v.${name} then
+      lib.concatMapAttrs (
+        name: subv:
+        if pred name subv then
           {
-            ${name} = filterRecursive pred v.${name};
+            ${name} = filterRecursive pred subv;
           }
         else
           { }
-      ) (lib.attrNames v)
+      ) v
     else if lib.isList v then
-      map (filterRecursive pred) v
+      map (subv: filterRecursive pred subv) v
     else
       v;
 in

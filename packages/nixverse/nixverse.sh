@@ -183,19 +183,35 @@ cmd_node_update() {
 	cmd_node_deploy "$@"
 }
 
-cmd_show() {
-	local entity_name=$1
-	local filter=${2:-.}
+cmd_node_value() {
+	if [[ $# = 0 ]]; then
+		cmd_help_node_value >&2
+		exit 1
+	fi
 
-	load_entity_json
-	filter=$(
-		cat <<-EOF
-			if .type == "node" then
-				del(.files)
-			end | $filter
-		EOF
-	)
-	jq --raw-output "$filter" <<<"$entity_json"
+	local flake
+	flake=$(find_flake)
+
+	eval_nix "$flake" "self: self.nixverse.nodeValue $(to_nix_list "$@")"
+}
+
+eval_nix() {
+	local flake=$1
+	local expr=$2
+
+	nix eval \
+		--json \
+		--no-eval-cache \
+		--no-warn-dirty \
+		--apply "$expr" \
+		--show-trace \
+		"$flake?submodules=1#."
+}
+
+to_nix_list() {
+	echo -n '['
+	printf ' "%s"' "$@"
+	echo ']'
 }
 
 cmd_node_secrets() {

@@ -1,11 +1,11 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-#shellcheck disable=SC2153
+# shellcheck disable=SC2153
 boot_type=$BOOT_TYPE
-#shellcheck disable=SC2153
+# shellcheck disable=SC2153
 boot_device=$BOOT_DEVICE
-#shellcheck disable=SC2153
+# shellcheck disable=SC2153
 root_format=$ROOT_FORMAT
 
 mem_size=$(awk '$1 == "MemTotal:" {print $2; exit}' /proc/meminfo)
