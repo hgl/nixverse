@@ -572,16 +572,20 @@ let
         .${entity.type}
       ) final.entities;
       configuration = mkConfiguration {
-        specialArgs = {
-          inherit inputs nodes;
-          lib' = nodeLib;
-          modules' =
-            {
-              nixos = final.nixosModules;
-              darwin = final.darwinModules;
-            }
-            .${os};
-        };
+        specialArgs =
+          {
+            inherit inputs nodes;
+            lib' = nodeLib;
+            modules' =
+              {
+                nixos = final.nixosModules;
+                darwin = final.darwinModules;
+              }
+              .${os};
+          }
+          // lib.optionalAttrs (lib.pathExists privateDir) {
+            privatePath = privateDir;
+          };
         modules =
           [
             (
