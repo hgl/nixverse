@@ -682,7 +682,9 @@ let
           "Missing nodes${
             lib.optionalString (rawValue == null) "/${lib.head parentNames}"
           }/${nodeName}/configuration.nix";
-        paths ++ recursiveFindFilesInNode nodeName "hardware-configuration.nix";
+        paths
+        ++ recursiveFindFilesInNode nodeName "hardware-configuration.nix"
+        ++ recursiveFindFilesInNode nodeName "disk-config.nix";
       homeFiles = lib.zipAttrs (
         foldParentNames nodeName (
           paths: parentName: childName:
