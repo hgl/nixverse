@@ -20,6 +20,7 @@ let
     nixosConfigurations = loadConfigurations "nixos";
     darwinConfigurations = loadConfigurations "darwin";
     # Expose for tests
+    flakePath = publicDir;
     entities = lib.mapAttrs (
       name: entityObj:
       {
@@ -29,7 +30,8 @@ let
       .${entityObj.type}
     ) entityObjs;
     nixverse = {
-      nodeValue =
+      # TODO: use a more efficient way to calculate these data
+      nodeValueData =
         rawEntityNames:
         let
           entityNames =
@@ -104,9 +106,9 @@ let
             {
               parents = group.parentNames;
               children = group.childNames;
-              effectiveNodes = lib.filter (nodeName: lib.elem groupName nodes.${nodeName}.parents) (
-                lib.attrNames nodes
-              );
+              effectiveNodes = foldChildNames groupName (
+                names: childName: names ++ lib.optional (lib.hasAttr childName nodes) childName
+              ) [ ];
             }
           ) (findGroupNames entityNames { });
         };
@@ -854,14 +856,14 @@ let
   findFilesInNode =
     nodeName: fileName:
     if entityObjs.${nodeName}.rawValue == null then
-      optionalPath "${publicDir}/nodes/${nodeName}/${fileName}"
-      ++ optionalPath "${privateDir}/nodes/${nodeName}/${fileName}"
-    else
       lib.concatMap (
         parentName:
         optionalPath "${publicDir}/nodes/${parentName}/${nodeName}/${fileName}"
         ++ optionalPath "${privateDir}/nodes/${parentName}/${nodeName}/${fileName}"
-      ) entityObjs.${nodeName}.parentNames;
+      ) entityObjs.${nodeName}.parentNames
+    else
+      optionalPath "${publicDir}/nodes/${nodeName}/${fileName}"
+      ++ optionalPath "${privateDir}/nodes/${nodeName}/${fileName}";
   foldParentNames =
     entityName: f: nul:
     let

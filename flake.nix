@@ -29,10 +29,10 @@
       };
     in
     {
+      lib = lib';
       load = import ./load {
         inherit lib lib';
       };
-      lib = lib';
       packages = lib'.forAllSystems (
         system:
         let
@@ -91,38 +91,48 @@
               )
             ) names;
         in
-        testLoad
-          [
-            "lib"
-            "group"
-            "selfRef"
-            "crossRef"
-            "groupEmpty"
-            "groupEmptyCommon"
-            "groupEmptyDeep"
-            "confPath"
-            "hwconfPath"
-            "files"
-            "private"
-          ]
-          {
-            inputs = {
-              nixpkgs-unstable = nixpkgs;
+        {
+          inherit lib lib';
+          tests =
+            testLoad
+              [
+                "lib"
+                "group"
+                "selfRef"
+                "crossRef"
+                "groupEmpty"
+                "groupEmptyCommon"
+                "groupEmptyDeep"
+                "confPath"
+                "hwconfPath"
+                "files"
+                "private"
+              ]
+              {
+                inputs = {
+                  nixpkgs-unstable = nixpkgs;
+                };
+              }
+            // testLoad [ "secretsPath" ] {
+              inputs = {
+                nixpkgs-unstable = nixpkgs;
+                sops-nix-unstable = builtins.getFlake "github:Mic92/sops-nix/07af005bb7d60c7f118d9d9f5530485da5d1e975";
+              };
+            }
+            // testLoad [ "nodeArgs" ] {
+              inputs = {
+                nixpkgs-unstable = nixpkgs;
+                custom-unstable = {
+                  value = 1;
+                };
+              };
+            }
+            // testLoad [ "home" ] {
+              inputs = {
+                nixpkgs-unstable = nixpkgs;
+                home-manager-unstable = builtins.getFlake "github:nix-community/home-manager/bd65bc3cde04c16755955630b344bc9e35272c56";
+              };
             };
-          }
-        // testLoad [ "nodeArgs" ] {
-          inputs = {
-            nixpkgs-unstable = nixpkgs;
-            custom-unstable = {
-              value = 1;
-            };
-          };
-        }
-        // testLoad [ "home" ] {
-          inputs = {
-            nixpkgs-unstable = nixpkgs;
-            home-manager-unstable = builtins.getFlake "github:nix-community/home-manager/bd65bc3cde04c16755955630b344bc9e35272c56";
-          };
         };
     };
 }

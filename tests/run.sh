@@ -18,7 +18,7 @@ cd "$work"
 
 prefixExpression=$(
 	cat <<-EOF
-		tests:
+		{ tests, lib, lib' }:
 	EOF
 )
 
@@ -46,7 +46,6 @@ expectFailure() {
 
 expectSuccess 'tests.group.entities.newGroupNode-0.value.x' '1'
 expectSuccess 'tests.group.entities.standaloneNode.value.x' '1'
-expectSuccess 'tests.group.entities.standaloneNode.value.x' '1'
 expectSuccess 'tests.group.entities.nodeA.value.x' '"nodeAParentB"'
 
 expectSuccess 'tests.lib.entities.topLib-node.value.final' '{"lib":true,"libP":{"common":null,"node":null,"top":{"lib":true,"libP":{"override":"top"}}}}'
@@ -73,6 +72,8 @@ expectSuccess 'tests.confPath.entities.group-0.value.config.nixverse-test' '{"ba
 expectSuccess 'tests.hwconfPath.entities.node.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.hwconfPath.entities.groupCommon-0.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.hwconfPath.entities.group-0.value.config.nixverse-test' '{"bar":1,"bar2":1}'
+expectSuccess 'lib.removePrefix "${tests.secretsPath.flakePath}/" tests.secretsPath.entities.node.value.config.sops.defaultSopsFile' '"nodes/node/secrets.yaml"'
+expectSuccess 'lib.removePrefix "${tests.secretsPath.flakePath}/" tests.secretsPath.entities.group-0.value.config.sops.defaultSopsFile' '"nodes/group/group-0/secrets.yaml"'
 expectSuccess 'tests.home.entities.node.value.config.home-manager.users.foo.nixverse-test' '"bar"'
 expectSuccess 'tests.home.entities.groupCommon-0.value.config.home-manager.users.foo.nixverse-test' '"bar"'
 expectSuccess 'tests.home.entities.group-0.value.config.home-manager.users.foo.nixverse-test' '{"bar":1,"bar2":1}'
