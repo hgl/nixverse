@@ -64,6 +64,9 @@
                 shfmt
                 shellcheck
                 nodePackages.bash-language-server
+                ssh-to-age
+                sops
+                yq
                 (writeShellScriptBin "run" ''
                   for i in $(seq 1 $((1 + $RANDOM % 4))); do
                     echo doing step $i

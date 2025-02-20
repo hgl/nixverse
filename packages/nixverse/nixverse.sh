@@ -1,11 +1,121 @@
 #!@shell@
 # shellcheck shell=bash
-set -euo pipefail
+set -xeuo pipefail
 
 PATH=@path@:$PATH
 
+cmd_help() {
+	if [[ -z ${1-} ]]; then
+		cat <<EOF
+Usage: nixverse <command> [ARGUMENT]...
+
+Commands:
+  node         manage nodes
+  secrets      encrypt or decrypt secrets
+  help         show help for a command
+
+Use "nixverse <command> --help" for more information about a command.
+EOF
+	else
+		cmd help "$@"
+	fi
+}
+
+cmd_help_node() {
+	if [[ -z ${1-} ]]; then
+		cat <<EOF
+Usage: nixverse node <command> [ARGUMENT]...
+
+Manage nodes
+
+Commands:
+  deploy       manage nodes
+  value        print value specified in node.nix or group.nix
+
+Use "nixverse node <command> --help" for more information about a command.
+EOF
+	else
+		cmd help node "$@"
+	fi
+}
+
+cmd_help_node_deploy() {
+	cat <<EOF
+Usage: nixverse node deploy [OPTION]... <NODE>...
+
+Deploy one or more nodes
+EOF
+}
+
+cmd_help_secrets() {
+	if [[ -z ${1-} ]]; then
+		cat <<EOF
+Usage: nixverse secrets <command> [ARGUMENT]...
+
+Manage secrets
+
+Commands:
+  edit         edit an encrytped file
+  encrypt      encrypt a file
+  decrypt      decrypt a file
+
+Use "nixverse secrets <command> --help" for more information about a command.
+EOF
+	else
+		cmd help secrets "$@"
+	fi
+}
+
+cmd_help_secrets_edit() {
+	cat <<EOF
+Usage: nixverse secrets edit [OPTION]... [FILE]
+
+Edit an encrytped file.
+With no FILE, edit top secrets.yaml.
+
+Options:
+  -h, --help    show this help
+EOF
+}
+
+cmd_help_secrets_encrypt() {
+	cat <<EOF
+Usage: nixverse secrets encrypt [OPTION]... [FILE] [OUTPUT]
+
+Encrypt a file.
+With no FILE or FILE is -, encrypt standard input.
+With no OUTPUT or OUTPUT is -, output to standard output.
+
+Options:
+  -i, --in-place      encrypt the file in-place
+  -h, --help          show this help
+EOF
+}
+
+cmd_help_secrets_decrypt() {
+	cat <<EOF
+Usage: nixverse secrets decrypt [OPTION]... [FILE] [OUTPUT]
+
+Decrypt a file.
+With no FILE or FILE is -, decrypt standard input.
+With no OUTPUT or OUTPUT is -, output to standard output.
+
+Options:
+  -i, --in-place      decrypt the file in-place
+  -h, --help          show this help
+EOF
+}
+
+cmd_help_help() {
+	cat <<EOF
+Usage: nixverse help <command>
+
+Show help for the command
+EOF
+}
+
 cmd_node() {
-	cmd "$@"
+	cmd node "$@"
 }
 
 cmd_node_build() {
@@ -71,27 +181,38 @@ cmd_node_bootstrap() {
 	rsync_fs /mnt
 }
 
-cmd_deploy() {
-	local entity_name=$1
+cmd_node_deploy() {
+	local args
+	args=$(getopt -n nixverse -o 'h' --long '--help' -- "$@")
+	eval set -- "$args"
+	unset args
 
-	local node_names
-	load_entity_type
-	case $entity_type in
-	node)
-		node_names=$entity_name
-		build_node
+	while true; do
+		case $1 in
+		-h | --help)
+			cmd help node deploy
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
+		esac
+	done
 
-		local args=()
+	if [[ $# = 0 ]]; then
+		cmd help node deploy >&2
+		return 1
+	fi
 
-		NIX_SSHOPTS=$node_deploy_sshOpts "${args[@]}"
-		rsync_fs
-		;;
-	group)
-		node_names=$(jq)
-		;;
-	esac
+	local flake
+	flake=$(find_flake)
 
-	parallel
+	eval_nix "$flake" "nixverse.loadNodeDeployData (lib.splitString \" \" \"$*\")" | deploy
 }
 
 deploy_node() {
@@ -184,15 +305,380 @@ cmd_node_update() {
 }
 
 cmd_node_value() {
+	local args
+	args=$(getopt -n nixverse -o 'h' --long '--help' -- "$@")
+	eval set -- "$args"
+	unset args
+
+	while true; do
+		case $1 in
+		-h | --help)
+			cmd help node value
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
+		esac
+	done
+
 	if [[ $# = 0 ]]; then
-		cmd_help_node_value >&2
-		exit 1
+		cmd help node value >&2
+		return 1
 	fi
 
 	local flake
 	flake=$(find_flake)
 
-	eval_nix "$flake" "self: self.nixverse.nodeValue $(to_nix_list "$@")"
+	eval_nix "$flake" "nixverse.loadNodeValueData (lib.splitString \" \" \"$*\")"
+}
+
+cmd_secrets() {
+	local f flake
+	local private_dir=''
+	local force=''
+
+	local action=${1-}
+	case $action in
+	encrypt | decrypt)
+		shift
+		local args
+		args=$(getopt -n nixverse -o 'hif' --long '--help,--in-place,--force' -- "$@")
+		eval set -- "$args"
+		unset args
+
+		local in_place=''
+		while true; do
+			case $1 in
+			-i | --in-place)
+				shift
+				in_place=1
+				;;
+			-f | --force)
+				shift
+				force=1
+				;;
+			-h | --help)
+				cmd help secrets "$action"
+				return
+				;;
+			--)
+				shift
+				break
+				;;
+			*)
+				echo >&2 "Unhandled flag $1"
+				return 1
+				;;
+			esac
+		done
+
+		f=${1:--}
+		local output=${2:-}
+		flake=$(find_flake)
+
+		if [[ $f != - ]]; then
+			f=$(realpath --no-symlinks --relative-base "$flake" "$f")
+			if [[ $f = /* ]]; then
+				echo >&2 "Input file not within the flake directory"
+				return 1
+			fi
+		fi
+		if [[ -n $output ]]; then
+			if [[ -n $in_place ]]; then
+				echo >&2 "Output file must not be specified for --in-place"
+				return 1
+			fi
+		else
+			output=-
+		fi
+		if [[ $output != - ]]; then
+			output=$(realpath --no-symlinks --relative-base "$flake" "$output")
+			if [[ $output = "$f" ]]; then
+				echo >&2 "Output to the same file is not allowed"
+				return 1
+			fi
+		fi
+		pushd "$flake" >/dev/null
+		if [[ -d private ]]; then
+			private_dir=private/
+		fi
+		;;
+	edit)
+		shift
+		local args
+		args=$(getopt -n nixverse -o 'h' --long '--help' -- "$@")
+		eval set -- "$args"
+		unset args
+
+		while true; do
+			case $1 in
+			-f | --force)
+				shift
+				force=1
+				;;
+			-h | --help)
+				cmd help secrets "$action"
+				return
+				;;
+			--)
+				shift
+				break
+				;;
+			*)
+				echo >&2 "Unhandled flag $1"
+				return 1
+				;;
+			esac
+		done
+
+		f=${1-}
+		flake=$(find_flake)
+
+		if [[ -z $f ]]; then
+			pushd "$flake" >/dev/null
+			if [[ -d private ]]; then
+				private_dir=private/
+			fi
+			f=${private_dir}secrets.yaml
+			if [[ -n $private_dir && -e secrets.yaml ]]; then
+				if [[ -e $f ]]; then
+					echo >&2 "secrets exist in both $flake and $flake/private, delete one and try again"
+					return 1
+				fi
+				mv secrets.yaml "$f"
+			fi
+		else
+			f=$(realpath --no-symlinks --relative-base "$flake" "$f")
+			if [[ $f = /* ]]; then
+				echo >&2 "Input file not within the flake directory"
+				return 1
+			fi
+			pushd "$flake" >/dev/null
+			if [[ -d private ]]; then
+				private_dir=private/
+			fi
+		fi
+		;;
+	*)
+		cmd secrets "$@"
+		return
+		;;
+	esac
+
+	local sops_action=(--indent 2)
+	case $action in
+	encrypt | decrypt)
+		sops_action+=("--$action")
+		if [[ -n $in_place ]]; then
+			sops_action+=(--in-place)
+		elif [[ $output != - ]]; then
+			sops_action+=(--output "$output")
+		fi
+		;;
+	esac
+
+	local wo_private=${f#private/}
+	if [[ $wo_private = secrets.yaml ]]; then
+		case $action in
+		encrypt)
+			if [[ -z $force ]]; then
+				echo >&2 'Specify --force to encrypt top secrets'
+				popd >/dev/null
+				return 1
+			fi
+			sops "${sops_action[@]}" "$f"
+			return
+			;;
+		decrypt)
+			if [[ -z $force && -n $in_place ]]; then
+				echo >&2 'Specify --force to decrypt top secrets in-place'
+				popd >/dev/null
+				return 1
+			fi
+			sops "${sops_action[@]}" "$f"
+			return
+			;;
+		esac
+
+		mkdir -p build
+		if [[ ! -e $f ]]; then
+			(
+				umask a=,u=rw
+				cat <<EOF >build/secrets.yaml
+node:
+  name: value
+EOF
+			)
+		else
+			sops --decrypt --indent 2 --output build/secrets.yaml "$f"
+		fi
+
+		${SOPS_EDITOR:-${EDITOR:-vi}} build/secrets.yaml
+		# shellcheck disable=SC2016
+		yq --raw-output --slurp --arg f "$f" \
+			'if . != [] and (.[0] | type == "object" and all(.[]; type == "object")) then
+				""
+			else
+				"Must be an object of objects: \($f)" | halt_error(1)
+			end' \
+			build/secrets.yaml
+		local entity_names
+		entity_names=$(yq --raw-output 'keys | join(" ")' build/secrets.yaml)
+		eval_nix "$flake" "nixverse.loadNodeSecretsData (lib.splitString \" \" \"$entity_names\")" |
+			jq --raw-output '.[] | join(" ")' |
+			(
+				echo 'node_names :='
+				while read -r node_name node_dir sections; do
+					cat <<-EOF
+						node_names += $node_name
+						node_${node_name}_dir := $node_dir
+						node_${node_name}_secrets_sections := $sections
+					EOF
+				done
+			) |
+			make -f - -f @out@/lib/nixverse/secrets.mk
+		sops --encrypt --indent 2 --output "$f" build/secrets.yaml
+		popd >/dev/null
+		return
+	fi
+
+	if [[ $f = - ]]; then
+		sops "${sops_action[@]}" "/dev/stdin"
+		popd >/dev/null
+		return
+	fi
+
+	local wo_nodes=${wo_private#nodes/}
+	if [[ -z $wo_nodes ]]; then
+		echo >&2 "Invalid secrets file"
+		popd >/dev/null
+		return 1
+	fi
+	if [[ $wo_nodes = "$wo_private" ]]; then
+		sops "${sops_action[@]}" "$f"
+		popd >/dev/null
+		return
+	fi
+
+	local entity_name=${wo_nodes%%/*}
+	local wo_entity_name=${wo_nodes#"$entity_name/"}
+	if [[ -z $wo_entity_name ]] || [[ $wo_entity_name = "$wo_nodes" ]]; then
+		echo >&2 "Invalid secrets file"
+		popd >/dev/null
+		return 1
+	fi
+
+	local valid=''
+	local node_name node_dir wo_node_name
+	if [[ -e private/nodes/$entity_name/node.nix ]] || [[ -e nodes/$entity_name/node.nix ]]; then
+		valid=1
+		# local recipient=nodes/$entity_name/fs/etc/ssh/ssh_host_ed25519_key.pub
+		# if [[ -e private/$pubkey ]]; then
+		# 	pubkey=private/$pubkey
+		# elif [[ -e $pubkey ]]; then
+		# 	:
+		# else
+		# 	pubkey=${private_dir}$pubkey
+		# 	make_secrets "$pubkey"
+		# fi
+		node_name=$entity_name
+		node_dir=nodes/$node_name
+		wo_node_name=$wo_entity_name
+	elif [[ -e private/nodes/$entity_name/group.nix ]] || [[ -e nodes/$entity_name/group.nix ]]; then
+		valid=1
+		node_name=${wo_entity_name%%/*}
+		wo_node_name=${wo_entity_name#"$node_name/"}
+		if [[ -z $wo_node_name ]]; then
+			echo >&2 "Invalid secrets file"
+			popd >/dev/null
+			return 1
+		fi
+
+		if [[ $wo_node_name = "$wo_entity_name" || $node_name = common ]]; then
+			sops "${sops_action[@]}" "$f"
+			popd >/dev/null
+			return
+		fi
+
+		node_dir=nodes/$entity_name/$node_name
+	fi
+	if [[ -n $valid ]]; then
+		case $wo_node_name in
+		secrets.yaml)
+			if [[ -z $force ]]; then
+				case $action in
+				encrypt | edit)
+					echo >&2 "Specify --force to $action node secrets"
+					popd >/dev/null
+					return 1
+					;;
+				decrypt)
+					if [[ -n $in_place ]]; then
+						echo >&2 'Specify --force to decrypt node secrets in-place'
+						popd >/dev/null
+						return 1
+					fi
+					;;
+				esac
+			fi
+			;;
+		ssh_host_*_key)
+			if [[ -z $force ]]; then
+				case $action in
+				encrypt | edit)
+					echo >&2 "Specify --force to $action node ssh host key"
+					popd >/dev/null
+					return 1
+					;;
+				decrypt)
+					if [[ -n $in_place ]]; then
+						echo >&2 'Specify --force to decrypt node ssh host key in-place'
+						popd >/dev/null
+						return 1
+					fi
+					;;
+				esac
+			fi
+			sops "${sops_action[@]}" "$f"
+			return
+			;;
+		esac
+
+		local key
+		case $action in
+		decrypt | edit)
+			key=build/$node_dir/age.key
+			;;
+		encrypt)
+			key=build/$node_dir/age.pubkey
+			;;
+		esac
+		if [[ ! -e $key ]]; then
+			make -f - -f @out@/lib/nixverse/secrets.mk "$key" <<-EOF
+				node_names += $node_name
+				node_${node_name}_dir := $node_dir
+			EOF
+		fi
+		case $action in
+		decrypt | edit)
+			SOPS_AGE_KEY=$(<"$key") sops "${sops_action[@]}" "$f"
+			;;
+		encrypt)
+			sops "${sops_action[@]}" --age "$(<"$key")" "$f"
+			;;
+		esac
+		popd >/dev/null
+		return
+	fi
+	echo >&2 "No node.nix or group.nix exists for node $entity_name"
+	popd >/dev/null
+	return 1
 }
 
 eval_nix() {
@@ -203,328 +689,12 @@ eval_nix() {
 		--json \
 		--no-eval-cache \
 		--no-warn-dirty \
-		--apply "$expr" \
+		--apply "{ nixverse, ... }: let inherit (nixverse) lib lib'; in $expr" \
 		--show-trace \
 		"$flake?submodules=1#."
 }
 
-to_nix_list() {
-	echo -n '['
-	printf ' "%s"' "$@"
-	echo ']'
-}
-
-cmd_node_secrets() {
-	local node_name=$1
-	local filter=${2-}
-
-	find_secrets
-	find_node
-
-	local node_secrets=$node_secrets_dir/secrets.yaml
-	local new_node_secrets=''
-	local key
-	if [[ -z $filter ]]; then
-		if [[ ! -e $node_secrets ]]; then
-			new_node_secrets=1
-			mkdir -p "$(dirname "$node_secrets")"
-		fi
-		if [[ -z $node_group ]]; then
-			if [[ -n $new_node_secrets ]]; then
-				mkdir -p "$(dirname "$node_secrets")"
-				(
-					umask a=,u=rw
-					cat <<EOF >"$node_secrets"
-name: value
-EOF
-				)
-				sops encrypt --age "$recipient" --in-place "$node_secrets"
-			fi
-			key=$(node_age_key)
-			SOPS_AGE_KEY=$key sops "$node_secrets"
-		else
-			local common_secrets=$node_secrets_base_dir/common/secrets.yaml
-			local new_common_secrets=''
-			if [[ ! -e $common_secrets ]]; then
-				new_common_secrets=1
-				mkdir -p "$(dirname "$common_secrets")"
-				(
-					umask a=,u=rw
-					cat <<EOF >"$common_secrets"
-common:
-  # secrets for all nodes
-  name: value
-${node_name}:
-  # secrets for this node only, overrides those in common
-  name: value
-EOF
-				)
-				encrypt_root_secrets '' "$common_secrets"
-			fi
-			if sops --indent 2 "$common_secrets"; then
-				:
-			elif [[ $? = 200 ]]; then
-				if [[ -z $new_common_secrets ]] && [[ -z $new_node_secrets ]]; then
-					return
-				fi
-			else
-				return 1
-			fi
-			local tmp
-			tmp=$(mktemp)
-			#shellcheck disable=SC2016
-			decrypt_root_secrets '' "$common_secrets" - |
-				yq --yaml-output --indent 2 --arg n "$node_name" '(.common // {}) * (.[$n] // {})' >"$tmp"
-			#shellcheck disable=SC2064
-			trap "rm -f '$tmp'" EXIT
-
-			if [[ -n $new_node_secrets ]]; then
-				local recipient
-				recipient=$(node_age_recipient)
-				(
-					umask a=,u=rw
-					sops encrypt --age "$recipient" --filename-override "$node_secrets" --output "$node_secrets" "$tmp"
-				)
-			else
-				key=$(node_age_key)
-				EDITOR="mv $tmp" SOPS_AGE_KEY=$key sops edit "$node_secrets"
-			fi
-		fi
-	else
-		key=$(node_age_key)
-		SOPS_AGE_KEY=$key sops decrypt "$node_secrets" | yq --raw-output "$filter"
-	fi
-}
-
-cmd_secrets() {
-	cmd "$@"
-}
-
-cmd_secrets_edit() {
-	local f=$1
-	if [[ ! -e $f ]]; then
-		mkdir -p "$(dirname "$f")"
-		(
-			umask a=,u=rw
-			cat <<EOF >"$f"
-name: value
-EOF
-		)
-	fi
-
-	find_node_by_secret_path "$f"
-	if [[ -z $node_name ]]; then
-		if sops --indent 2 "$f"; then
-			return
-		elif [[ $? = 200 ]]; then
-			return
-		else
-			return 1
-		fi
-	elif [[ $node_name = common ]]; then
-		if [[ $secret_path = secrets.yaml ]]; then
-			echo >&2 'Node secrets can only be edit with "nixverse node secrets <node name>"'
-			return 1
-		fi
-		if sops --indent 2 "$f"; then
-			return
-		elif [[ $? = 200 ]]; then
-			return
-		else
-			return 1
-		fi
-	else
-		if [[ $secret_path = secrets.yaml ]]; then
-			echo >&2 'Node secrets can only be edit with "nixverse node secrets <node name>"'
-			return 1
-		else
-			local key
-			key=$(node_age_key)
-			if SOPS_AGE_KEY=$key sops --indent 2 "$f"; then
-				return
-			elif [[ $? = 200 ]]; then
-				return
-			else
-				return 1
-			fi
-		fi
-	fi
-}
-
-cmd_secrets_encrypt() {
-	local type=''
-	OPTIND=1
-	while getopts 't:' opt; do
-		case $opt in
-		t) type=$OPTARG ;;
-		?) exit 1 ;;
-		esac
-	done
-	shift $((OPTIND - 1))
-
-	local in_file=$1
-	local out_file=${2-}
-
-	local args=()
-	if [[ -n $type ]]; then
-		args+=(--input-type "$type")
-	fi
-	local ref_file=''
-	if [[ $in_file = - ]]; then
-		if [[ -z $out_file ]] || [[ $out_file = - ]]; then
-			echo >&2 "Unable to determine the secret's path, encrypting as a root secret"
-			encrypt_root_secrets "$type" -
-			return
-		else
-			ref_file=$out_file
-			if [[ ! -e $out_file ]]; then
-				mkdir -p "$(dirname "$out_file")"
-				: >"$out_file"
-			fi
-			args+=(--output "$out_file")
-		fi
-		args+=(/dev/stdin)
-	else
-		if [[ -z $out_file ]]; then
-			args+=(--in-place)
-			ref_file=$in_file
-		elif [[ $out_file = - ]]; then
-			ref_file=$in_file
-		else
-			args+=(--output "$out_file")
-			ref_file=$out_file
-			if [[ ! -e $out_file ]]; then
-				mkdir -p "$(dirname "$out_file")"
-				: >"$out_file"
-			fi
-		fi
-		args+=("$in_file")
-	fi
-	find_node_by_secret_path "$ref_file"
-	if [[ -z $node_name ]]; then
-		encrypt_root_secrets "$type" "$in_file" "$out_file"
-	elif [[ $node_name = common ]]; then
-		if [[ $secret_path = secrets.yaml ]]; then
-			echo >&2 'Node secrets can only be edit with "nixverse node secrets <node name>"'
-			return 1
-		fi
-		encrypt_root_secrets "$type" "$in_file" "$out_file"
-	else
-		case $secret_path in
-		secrets.yaml)
-			echo >&2 'Node secrets can only be edit with "nixverse node secrets <node name>"'
-			return 1
-			;;
-		ssh_host_*_key)
-			echo >&2 'Node ssh host keys are managed automatically, do not edit'
-			return 1
-			;;
-		esac
-		local recipient
-		recipient=$(node_age_recipient)
-		(
-			umask a=,u=rw
-			sops encrypt \
-				--age "$recipient" \
-				"${args[@]}"
-		)
-	fi
-}
-
-cmd_secrets_decrypt() {
-	local type=''
-	OPTIND=1
-	while getopts 't:' opt; do
-		case $opt in
-		t) type=$OPTARG ;;
-		?) exit 1 ;;
-		esac
-	done
-	shift $((OPTIND - 1))
-
-	local in_file=$1
-	local out_file=${2-}
-
-	local args=()
-	if [[ -n $type ]]; then
-		args+=(--input-type "$type")
-	fi
-	local ref_file=''
-	if [[ $in_file = - ]]; then
-		if [[ -z $out_file ]] || [[ $out_file = - ]]; then
-			echo >&2 "Unable to determine the secret's path, decrypting as a root secret"
-			decrypt_root_secrets "$type" -
-			return
-		else
-			ref_file=$out_file
-			if [[ ! -e $out_file ]]; then
-				mkdir -p "$(dirname "$out_file")"
-				: >"$out_file"
-			fi
-			args+=(--output "$out_file")
-		fi
-		args+=(/dev/stdin)
-	else
-		ref_file=$in_file
-		if [[ -z $out_file ]]; then
-			args+=(--in-place)
-		elif [[ $out_file = - ]]; then
-			:
-		else
-			args+=(--output "$out_file")
-		fi
-		args+=("$in_file")
-	fi
-	find_node_by_secret_path "$ref_file"
-	if [[ -z $node_name ]]; then
-		decrypt_root_secrets "$type" "$in_file" "$out_file"
-	elif [[ $node_name = common ]]; then
-		if [[ $secret_path = secrets.yaml ]]; then
-			echo >&2 'Node secrets can only be edit with "nixverse node secrets"'
-			return 1
-		fi
-		decrypt_root_secrets "$type" "$in_file" "$out_file"
-	else
-		case $secret_path in
-		secrets.yaml)
-			echo >&2 'Node secrets can only be edit with "nixverse node secrets"'
-			return 1
-			;;
-		ssh_host_*_key)
-			echo >&2 'Node ssh host keys are managed automatically, do not edit'
-			return 1
-			;;
-		esac
-		local age_key
-		age_key=$(node_age_key)
-		(
-			umask a=,u=rw
-			SOPS_AGE_KEY=$age_key sops decrypt \
-				"${args[@]}"
-		)
-	fi
-}
-
-cmd_group() {
-	cmd "$@"
-}
-
-cmd_group_state() {
-	local node_group=$1
-	local filter=${2:-.}
-
-	find_group_json
-	jq --raw-output "$filter" <<<"$group_json"
-}
-
-cmd_config() {
-	config "$@"
-}
-
 find_flake() {
-	if [[ -n ${flake-} ]]; then
-		return
-	fi
 	if [[ -n ${FLAKE-} ]]; then
 		if [[ ! -e $FLAKE/flake.nix ]]; then
 			echo >&2 "FLAKE is not a flake directory: $FLAKE"
@@ -536,6 +706,7 @@ find_flake() {
 	flake=$PWD
 	while true; do
 		if [[ -e $flake/flake.nix ]]; then
+			echo "$flake"
 			return
 		fi
 		if [[ $flake = / ]]; then
@@ -544,109 +715,6 @@ find_flake() {
 		fi
 		flake=$(dirname "$flake")
 	done
-}
-
-load_entity_type() {
-	if [[ -n ${entity_type-} ]]; then
-		return
-	fi
-	load_entity_json
-	IFS=, read -r entity_type < <(
-		jq --raw-output '.type' <<<"$entity_json"
-	)
-}
-
-load_node() {
-	if [[ -n ${node_os-} ]]; then
-		return
-	fi
-	if [[ $entity_type != node ]]; then
-
-		return 1
-	fi
-	IFS=, read -r \
-		node_os node_channel node_group \
-		node_deploy_targetHost node_deploy_buildHost node_deploy_sudo \
-		node_deploy_sshOpts < <(
-			jq --raw-output '.node |
-"\(.os),\(.channel),\(.group),\(.deploy.targetHost),\(.deploy.buildHost),\(
-	if .deploy.buildHost.sudo then 1 else "" end
-),\(.deploy.sshOpts)"' <<<"$entity_json"
-		)
-}
-
-find_secrets() {
-	if [[ -n ${secrets_dir-} ]]; then
-		return
-	fi
-
-	find_flake
-	secrets_dir=''
-	if [[ -e $flake/config.json ]]; then
-		secrets_dir=$(jq --raw-output --arg conf "$flake/config.json" '
-			.secretsSource // empty |
-			if type != "string" or (startswith("/") | not) then
-				"\"secretsSource\" must be an absolute path string: \($conf)" | halt_error(1)
-			else
-				.
-			end
-		' "$flake/config.json")
-	fi
-	local input_exists
-	input_exists=$(nix flake metadata "$flake" --json |
-		jq 'if .locks.nodes.secrets then 1 else empty end')
-	if [[ -z $secrets_dir ]] && [[ -z $input_exists ]]; then
-		secrets_dir=$flake
-		return
-	else
-		if [[ -z $secrets_dir ]]; then
-			echo >&2 "\"secrets\" input is specified in flake.nix, but \"secretsSource\" is not specified in config.json: $flake"
-			return 1
-		fi
-		if [[ -z $input_exists ]]; then
-			echo >&2 "\"secretsSource\" is specified in config.json, but \"secrets\" input is not specified in flake.nix: $flake"
-			return 1
-		fi
-		nix flake update secrets --flake "$flake"
-	fi
-}
-
-find_node_by_secret_path() {
-	secret_path=$(readlink -f "$1")
-
-	find_secrets
-	node_name=''
-	node_group=''
-	local p
-	if p=${secret_path#"$flake/"} && [[ $p != "$secret_path" ]]; then
-		secret_path=$p
-		secret_base_dir=$flake
-	elif [[ $secrets_dir != "$flake" ]] && p=${secret_path#"$secrets_dir/"} && [[ $p != "$secret_path" ]]; then
-		secret_path=$p
-		secret_base_dir=$secrets_dir
-	else
-		echo >&2 "Secret is not inside a flake directory"
-		return 1
-	fi
-	if p=${secret_path#nodes/} && [[ $p = "$secret_path" ]]; then
-		return
-	fi
-	secret_path=$p
-	secret_base_dir=$secret_base_dir/nodes
-	node_name=${secret_path%%/*}
-	secret_path=${secret_path#"$node_name/"}
-	if [[ -e $flake/nodes/$node_name/node.nix ]]; then
-		find_node
-	elif [[ -e $flake/nodes/$node_name/nodes.nix ]]; then
-		node_name=${secret_path%%/*}
-		secret_path=${secret_path#"$node_name/"}
-		if [[ $node_name != common ]]; then
-			find_node
-		fi
-	else
-		echo >&2 "Secret is inside a node directory that does not have either node.nix or nodes.nix: $secret_path"
-		return 1
-	fi
 }
 
 find_node_file() {
@@ -667,178 +735,6 @@ find_node_file() {
 	echo ''
 }
 
-load_entity_json() {
-	find_flake
-
-	local fn=
-	fn=$(
-		cat <<-EOF
-			entities:
-			let
-				entity = entities.\${"$entity_name"} or null;
-			in
-			entity
-		EOF
-	)
-	local filter
-	filter=$(
-		cat <<-EOF
-			if . == null then
-				"Unknown node $entity_name\n" | halt_error(1)
-			else
-				.
-			end
-		EOF
-	)
-	entity_json=$(
-		nix eval \
-			--json \
-			--no-eval-cache \
-			--no-warn-dirty \
-			--apply "$fn" \
-			--show-trace \
-			"$flake#.nodes" |
-			jq \
-				--raw-output \
-				--compact-output \
-				"$filter"
-	)
-}
-
-#shellcheck disable=SC2120
-build_node() {
-	load_node
-
-	jq \
-		--raw-output \
-		'.files.Makefile[]' <<<"$entity_json" |
-		while read -r f; do
-			dir=$(dirname "$flake/$f")
-			NODE_OS=$node_os \
-				NODE_CHANNEL=$node_channel \
-				NODE_NAME=$node_name \
-				FLAKE=$flake \
-				make \
-				-C "$dir" \
-				--no-builtin-rules \
-				--no-builtin-variables \
-				--warn-undefined-variables \
-				"$@"
-		done
-}
-
-config() {
-	local filter=${1-.}
-
-	find_secrets
-	local f
-	if [[ ! -e $flake/config.json ]]; then
-		if [[ -z $secrets_dir ]] || [[ ! -e $secrets_dir/config.json ]]; then
-			echo >&2 "config.json does not exist in flake"
-			return 1
-		fi
-		f=$secrets_dir/config.json
-	elif [[ -z $secrets_dir ]] || [[ ! -e $secrets_dir/config.json ]]; then
-		f=$flake/config.json
-	else
-		jq --raw-output --slurp ".[0] * .[1] | $filter" \
-			"$flake/config.json" "$secrets_dir/config.json"
-		return
-	fi
-	jq --raw-output "$filter" "$f"
-}
-
-encrypt_root_secrets() {
-	find_flake
-
-	local type=$1
-	local in_file=$2
-	local out_file=${3-}
-
-	local recipients
-	recipients=$(config '.rootSecretsRecipients // empty | [.] | flatten(1) | join(",")')
-	if [[ -z $recipients ]]; then
-		echo >&2 "Missing \"rootSecretsRecipients\": $flake/config.json"
-		return 1
-	fi
-	local args=()
-	if [[ -n $type ]]; then
-		args+=(--input-type "$type")
-	fi
-	if [[ $in_file = - ]]; then
-		if [[ -z $out_file ]]; then
-			:
-		elif [[ $out_file != - ]]; then
-			args+=(--output "$out_file")
-		fi
-		args+=(/dev/stdin)
-	else
-		if [[ -z $out_file ]]; then
-			args+=(--in-place)
-		elif [[ $out_file != - ]]; then
-			args+=(--output "$out_file")
-		fi
-		args+=("$in_file")
-	fi
-	(
-		umask a=,u=rw
-		sops encrypt \
-			--age "$recipients" \
-			"${args[@]}"
-	)
-}
-
-decrypt_root_secrets() {
-	local type=$1
-	local in_file=$2
-	local out_file=${3-}
-
-	local args=()
-	if [[ -n $type ]]; then
-		args+=(--input-type "$type")
-	fi
-	if [[ $in_file = - ]]; then
-		if [[ -z $out_file ]]; then
-			:
-		elif [[ $out_file != - ]]; then
-			args+=(--output "$out_file")
-		fi
-		args+=(/dev/stdin)
-	else
-		if [[ -z $out_file ]]; then
-			args+=(--in-place)
-		elif [[ $out_file != - ]]; then
-			args+=(--output "$out_file")
-		fi
-		args+=("$in_file")
-	fi
-	(
-		umask a=,u=rw
-		sops decrypt \
-			"${args[@]}"
-	)
-}
-
-node_age_recipient() {
-	find_node
-
-	local pubkey=$node_dir/fs/etc/ssh/ssh_host_ed25519_key.pub
-	if [[ ! -e $pubkey ]]; then
-		build_node_secrets "$pubkey" >/dev/null
-	fi
-	ssh-to-age -i "$pubkey"
-}
-
-node_age_key() {
-	find_node
-
-	local key=$node_dir/fs/etc/ssh/ssh_host_ed25519_key
-	if [[ ! -e $key ]]; then
-		build_node_secrets "$key" >/dev/null
-	fi
-	ssh-to-age -private-key -i "$key"
-}
-
 rsync_fs() {
 	local target_dir=${1-}
 
@@ -855,7 +751,7 @@ rsync_fs() {
 	if [[ -d "$node_dir/fs" ]]; then
 		dirs+=("$node_dir/fs")
 	fi
-	if [[ $node_secrets_dir != "$node_dir" ]] && [[ -d "$node_secrets_dir/fs" ]]; then
+	if [[ $node_secrets_dir != "$node_dir" && -d "$node_secrets_dir/fs" ]]; then
 		dirs+=("$node_secrets_dir/fs")
 	fi
 	local uid
@@ -930,30 +826,130 @@ rsync_fs() {
 				--numeric-ids \
 				"$dir/" \
 				"${ssh_dst:+$ssh_dst:}$target_dir$home/"
-
 		)
 	fi
 }
 
-cmd() {
-	COMMANDS="${COMMANDS:+$COMMANDS }$1"
-	shift
-	local cmd=cmd${HELP:+_help}_${COMMANDS// /_}
+make() {
+	command make \
+		--no-builtin-rules \
+		--no-builtin-variables \
+		--warn-undefined-variables \
+		"$@"
+}
 
+cmd() {
+	local cmd=cmd
+	if [[ ${1-} = help ]]; then
+		cmd+=_help
+		shift
+	fi
+	case ${1-} in
+	'')
+		case ${2-} in
+		'')
+			if [[ $cmd = cmd_help ]]; then
+				cmd_help ''
+				return
+			else
+				cmd_help '' >&2
+				return 1
+			fi
+			;;
+		help)
+			if [[ $cmd != cmd_help ]]; then
+				shift 2
+				cmd help '' "$@"
+				return
+			fi
+			;;
+		*)
+			shift
+			local args
+			args=$(getopt -n nixverse -o '+h' --long '--help' -- "$@")
+			eval set -- "$args"
+			unset args
+
+			while true; do
+				case $1 in
+				-h | --help)
+					if [[ $cmd = cmd_help ]]; then
+						cmd help '' help
+					else
+						cmd_help ''
+					fi
+					return
+					;;
+				--)
+					shift
+					break
+					;;
+				*)
+					echo >&2 "Unhandled flag $1"
+					return 1
+					;;
+				esac
+			done
+			set -- '' "$@"
+			;;
+		esac
+		;;
+	*)
+		case ${2-} in
+		'')
+			cmd help '' "$1" >&2
+			return 1
+			;;
+		*)
+			local first=$1
+			shift
+
+			local args
+			args=$(getopt -n nixverse -o '+h' --long '--help' -- "$@")
+			eval set -- "$args"
+			unset args
+
+			while true; do
+				case $1 in
+				-h | --help)
+					cmd help '' "$first"
+					return
+					;;
+				--)
+					shift
+					break
+					;;
+				*)
+					echo >&2 "Unhandled flag $1"
+					return 1
+					;;
+				esac
+			done
+			set -- "$first" "$@"
+			unset first
+			;;
+		esac
+		;;
+	esac
+	cmd+=${1:+_$1}_$2
 	if [[ $(type -t "$cmd") = function ]]; then
-		"$cmd" "$@"
+		shift 2
+		set -- "$cmd" "$@"
+		unset cmd
+		"$@"
 	else
-		cat >&2 <<-EOF
-			Unknown command: $COMMANDS
-			Use "nixverse help" to find out usage.
-		EOF
+		if [[ $cmd = cmd_help_* ]]; then
+			cat >&2 <<-EOF
+				Unknown help topic $2
+				Run "nixverse help${1:+ $1}".
+			EOF
+		else
+			cat >&2 <<-EOF
+				Unknown command $2
+				Use "nixverse help${1:+ $1}" to find out usage.
+			EOF
+		fi
 		return 1
 	fi
 }
-
-HELP=''
-if [[ ${1-} = help ]]; then
-	shift
-	HELP=1
-fi
-cmd "$@"
+cmd '' "$@"

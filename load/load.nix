@@ -30,8 +30,9 @@ let
       .${entityObj.type}
     ) entityObjs;
     nixverse = {
+      inherit lib lib';
       # TODO: use a more efficient way to calculate these data
-      nodeValueData =
+      loadNodeValueData =
         rawEntityNames:
         let
           entityNames =
@@ -43,137 +44,52 @@ let
               if lib.hasAttr entityName final.entities then true else throw "Unknown node ${entityName}"
             ) names;
             names;
-          findNodeNames =
-            entityNames:
-            lib'.concatMapListToAttrs (
-              entityName:
-              let
-                entity = final.entities.${entityName};
-              in
-              {
-                node = {
-                  ${entityName} = true;
-                };
-                group = findNodeNames entity.childNames;
-              }
-              .${entity.type}
-            ) entityNames;
-          findGroupNames =
-            entityNames: visited:
-            lib'.concatMapListToAttrs (
-              entityName:
-              if lib.hasAttr entityName visited then
-                { }
-              else
-                let
-                  entity = final.entities.${entityName};
-                in
-                {
-                  node = findGroupNames entity.value.parents (
-                    visited
-                    // {
-                      ${entityName} = true;
-                    }
-                  );
-                  group =
-                    {
-                      ${entityName} = true;
-                    }
-                    // findGroupNames (entity.childNames ++ entity.parentNames) (
-                      visited
-                      // {
-                        ${entityName} = true;
-                      }
-                    );
-                }
-                .${entity.type}
-            ) entityNames;
-          nodes = lib.mapAttrs (
-            nodeName: _:
+          nodes = lib'.mapListToAttrs (
+            nodeName:
             let
               node = final.entities.${nodeName};
             in
-            filterRecursive (_: v: !(lib.isFunction v)) (lib.removeAttrs node.value [ "config" ])
+            lib.nameValuePair nodeName (
+              filterRecursive (_: v: !(lib.isFunction v)) (lib.removeAttrs node.value [ "config" ])
+            )
           ) (findNodeNames entityNames);
         in
         {
           inherit nodes;
-          groups = lib.mapAttrs (
-            groupName: _:
+          groups = lib'.mapListToAttrs (
+            groupName:
             let
               group = final.entities.${groupName};
             in
-            {
+            lib.nameValuePair groupName {
               parents = group.parentNames;
               children = group.childNames;
               effectiveNodes = foldChildNames groupName (
                 names: childName: names ++ lib.optional (lib.hasAttr childName nodes) childName
               ) [ ];
             }
-          ) (findGroupNames entityNames { });
+          ) (findGroupNames entityNames);
         };
-      loadDeployData =
-        entityName:
-        let
-          entity = final.entities.${entityName} or null;
-        in
-        if entity == null then
-          null
-        else
+      loadNodeSecretsData =
+        entityNames:
+        map (
+          nodeName:
           let
-            nodeNames =
-              {
-                node = [ entityName ];
-                group = foldChildNames entityName (
-                  nodes: childName:
-                  let
-                    entity = final.entities.${childName};
-                  in
-                  nodes ++ lib.optional (entity.type == "node") entity.name
-                ) [ ];
-              }
-              .${entityObjs.${entityName}.type};
+            entityObj = entityObjs.${nodeName};
           in
-          {
-            makefiles = final.toRelativePaths (final.recursiveFindFilesInBase "Makefile");
-            nodes = map (
-              nodeName:
-              let
-                entity = final.entities.${nodeName};
-              in
-              {
-                name = nodeName;
-                inherit (entity.value) os deploy;
-              }
-            ) nodeNames;
-          };
+          [
+            nodeName
+            (
+              if entityObj.rawValue == null then
+                "nodes/${lib.head entityObj.parentNames}/${nodeName}"
+              else
+                "nodes/${nodeName}"
+            )
+          ]
+          ++ map ({ parentName, ... }: parentName) (lib.reverseList (findAncestorNames nodeName))
+          ++ [ nodeName ]
+        ) (findNodeNames entityNames);
     };
-    toRelativePaths = paths: map (path: lib.removePrefix "${flake}/" path) paths;
-    recursiveFindFilesInBase =
-      entityName: fileName:
-      let
-        entityObj = entityObjs.${entityName};
-      in
-      {
-        node =
-          foldParentNames entityName (
-            paths: parentName: _:
-            paths
-            ++ optionalPath "${publicDir}/nodes/${parentName}/${fileName}"
-            ++ optionalPath "${privateDir}/nodes/${parentName}/${fileName}"
-          ) [ ]
-          ++ lib.optionals (entityObj.rawValue != null) (
-            optionalPath "${publicDir}/nodes/${entityName}/${fileName}"
-            ++ optionalPath "${privateDir}/nodes/${entityName}/${fileName}"
-          );
-        group = foldChildNames entityName (
-          paths: childName:
-          paths
-          ++ optionalPath "${publicDir}/nodes/${childName}/${fileName}"
-          ++ optionalPath "${privateDir}/nodes/${childName}/${fileName}"
-        ) [ ];
-      }
-      .${entityObj.type};
   };
   loadConfigurations =
     os:
@@ -385,10 +301,10 @@ let
       valueLocs =
         let
           merged =
-            foldParentNames nodeName
+            builtins.foldl'
               (
                 { values, value }:
-                parentName: childName:
+                { parentName, entityName }:
                 let
                   inherit (entityObjs.${parentName}) rawValue;
                   commonPublic =
@@ -436,12 +352,12 @@ let
                         value = commonPublic.value;
                       };
                   childPublic =
-                    if lib.hasAttr childName rawValue.public then
+                    if lib.hasAttr entityName rawValue.public then
                       let
                         v = lib.recursiveUpdate commonPrivate.value (
-                          loadValue rawValue.public.${childName} loc { common = commonPrivate.value; }
+                          loadValue rawValue.public.${entityName} loc { common = commonPrivate.value; }
                         );
-                        loc = "nodes/${parentName}/group.nix#${childName}";
+                        loc = "nodes/${parentName}/group.nix#${entityName}";
                       in
                       {
                         optional = [
@@ -458,12 +374,12 @@ let
                         value = commonPrivate.value;
                       };
                   childPrivate =
-                    if lib.hasAttr childName rawValue.private then
+                    if lib.hasAttr entityName rawValue.private then
                       let
                         v = lib.recursiveUpdate childPublic.value (
-                          loadValue rawValue.private.${childName} loc { common = commonPrivate.value; }
+                          loadValue rawValue.private.${entityName} loc { common = commonPrivate.value; }
                         );
-                        loc = "private/nodes/${parentName}/group.nix#${childName}";
+                        loc = "private/nodes/${parentName}/group.nix#${entityName}";
                       in
                       {
                         optional = [
@@ -493,7 +409,8 @@ let
               {
                 values = [ ];
                 value = { };
-              };
+              }
+              (findAncestorNames nodeName);
         in
         merged.values
         ++ lib.optionals (rawValue != null) (
@@ -589,16 +506,17 @@ let
           lib.recursiveUpdate parentsLib (loadLib "nodes/${nodeName}" { lib' = nodeLib; })
         else
           parentsLib;
-      parentsLib = foldParentNames nodeName (
-        accu: parentName: childName:
+      parentsLib = builtins.foldl' (
+        accu:
+        { parentName, entityName }:
         let
           commonLib = lib.recursiveUpdate accu (loadLib "nodes/${parentName}/common" { lib' = commonLib; });
           childLib = lib.recursiveUpdate commonLib (
-            loadLib "nodes/${parentName}/${childName}" { lib' = childLib; }
+            loadLib "nodes/${parentName}/${entityName}" { lib' = childLib; }
           );
         in
         childLib
-      ) topLib;
+      ) topLib (findAncestorNames nodeName);
       topLib = loadLib "" { lib' = topLib; };
       loadLib =
         subdir: extraArgs:
@@ -742,24 +660,25 @@ let
         .${os};
       configurationFiles =
         let
-          paths = recursiveFindFilesInNode nodeName "configuration.nix";
+          paths = findFilesInNodeRecursive nodeName "configuration.nix";
         in
         assert lib.assertMsg (lib.length paths != 0)
           "Missing nodes${
             lib.optionalString (rawValue == null) "/${lib.head parentNames}"
           }/${nodeName}/configuration.nix";
         paths
-        ++ recursiveFindFilesInNode nodeName "hardware-configuration.nix"
-        ++ recursiveFindFilesInNode nodeName "disk-config.nix";
+        ++ findFilesInNodeRecursive nodeName "hardware-configuration.nix"
+        ++ findFilesInNodeRecursive nodeName "disk-config.nix";
       homeFiles = lib.zipAttrs (
-        foldParentNames nodeName (
-          paths: parentName: childName:
+        builtins.foldl' (
+          paths:
+          { parentName, entityName }:
           paths
           ++ findHomeFiles "${publicDir}/nodes/${parentName}/common"
           ++ findHomeFiles "${privateDir}/nodes/${parentName}/common"
-          ++ findHomeFiles "${publicDir}/nodes/${parentName}/${childName}"
-          ++ findHomeFiles "${privateDir}/nodes/${parentName}/${childName}"
-        ) [ ]
+          ++ findHomeFiles "${publicDir}/nodes/${parentName}/${entityName}"
+          ++ findHomeFiles "${privateDir}/nodes/${parentName}/${entityName}"
+        ) [ ] (findAncestorNames nodeName)
         ++ lib.optionals (rawValue != null) (
           findHomeFiles "${publicDir}/nodes/${nodeName}" ++ findHomeFiles "${privateDir}/nodes/${nodeName}"
         )
@@ -839,16 +758,17 @@ let
       type = "group";
       inherit rawValue parentNames childNames;
     };
-  recursiveFindFilesInNode =
+  findFilesInNodeRecursive =
     nodeName: fileName:
-    foldParentNames nodeName (
-      paths: parentName: childName:
+    builtins.foldl' (
+      paths:
+      { parentName, entityName }:
       paths
       ++ optionalPath "${publicDir}/nodes/${parentName}/common/${fileName}"
       ++ optionalPath "${privateDir}/nodes/${parentName}/common/${fileName}"
-      ++ optionalPath "${publicDir}/nodes/${parentName}/${childName}/${fileName}"
-      ++ optionalPath "${privateDir}/nodes/${parentName}/${childName}/${fileName}"
-    ) [ ]
+      ++ optionalPath "${publicDir}/nodes/${parentName}/${entityName}/${fileName}"
+      ++ optionalPath "${privateDir}/nodes/${parentName}/${entityName}/${fileName}"
+    ) [ ] (findAncestorNames nodeName)
     ++ lib.optionals (entityObjs.${nodeName}.rawValue != null) (
       optionalPath "${publicDir}/nodes/${nodeName}/${fileName}"
       ++ optionalPath "${privateDir}/nodes/${nodeName}/${fileName}"
@@ -864,34 +784,24 @@ let
     else
       optionalPath "${publicDir}/nodes/${nodeName}/${fileName}"
       ++ optionalPath "${privateDir}/nodes/${nodeName}/${fileName}";
-  foldParentNames =
-    entityName: f: nul:
+  findAncestorNames =
+    entityName:
     let
-      fold =
-        entityName: nul: visited:
-        builtins.foldl'
-          (
-            accu: parentName:
-            let
-              parent = fold parentName accu.value accu.visited;
-            in
-            if lib.hasAttr parentName parent.visited then
-              parent
-            else
-              {
-                value = f parent.value parentName entityName;
-                visited = parent.visited // {
-                  ${parentName} = true;
-                };
-              }
-          )
-          {
-            value = nul;
-            inherit visited;
-          }
-          entityObjs.${entityName}.parentNames;
+      find =
+        entityName: visited:
+        let
+          inherit (entityObjs.${entityName}) parentNames;
+        in
+        map (parentName: { inherit parentName entityName; }) parentNames
+        ++ lib.concatMap (
+          parentName:
+          if lib.hasAttr parentName visited then
+            [ ]
+          else
+            find parentName (visited // { ${entityName} = true; })
+        ) parentNames;
     in
-    (fold entityName nul { }).value;
+    find entityName { };
   foldChildNames =
     groupName: f: nul:
     let
@@ -920,6 +830,65 @@ let
           childNames;
     in
     (fold entityObjs.${groupName}.childNames nul { }).value;
+  findNodeNames =
+    entityNames:
+    let
+      find =
+        entityNames: visited:
+        lib.concatMap (
+          entityName:
+          let
+            entity = final.entities.${entityName};
+          in
+          if lib.hasAttr entityName visited then
+            [ ]
+          else
+            {
+              node = [ entityName ];
+              group = find entity.childNames (
+                visited
+                // {
+                  ${entityName} = true;
+                }
+              );
+            }
+            .${entity.type}
+        ) entityNames;
+    in
+    find entityNames { };
+  findGroupNames =
+    entityNames:
+    let
+      find =
+        entityNames: visited:
+        lib.concatMap (
+          entityName:
+          let
+            entity = final.entities.${entityName};
+          in
+          if lib.hasAttr entityName visited then
+            [ ]
+          else
+            {
+              node = find entity.parentNames (
+                visited
+                // {
+                  ${entityName} = true;
+                }
+              );
+              group =
+                [ entityName ]
+                ++ find (entity.childNames ++ entity.parentNames) (
+                  visited
+                  // {
+                    ${entityName} = true;
+                  }
+                );
+            }
+            .${entity.type}
+        ) entityNames;
+    in
+    find entityNames { };
   nodeOptions = import ./nodeOptions.nix lib;
   importDirOrFile =
     base: name: default:

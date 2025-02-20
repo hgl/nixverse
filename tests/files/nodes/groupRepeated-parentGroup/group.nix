@@ -1,4 +1,0 @@
-{
-  groupRepeated-group = { };
-  groupRepeated-node = { };
-}

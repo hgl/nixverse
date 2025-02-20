@@ -78,11 +78,6 @@ expectSuccess 'tests.home.entities.node.value.config.home-manager.users.foo.nixv
 expectSuccess 'tests.home.entities.groupCommon-0.value.config.home-manager.users.foo.nixverse-test' '"bar"'
 expectSuccess 'tests.home.entities.group-0.value.config.home-manager.users.foo.nixverse-test' '{"bar":1,"bar2":1}'
 
-expectSuccess 'with tests.files; toRelativePaths (recursiveFindFilesInBase "node" "Makefile")' '["nodes/node/Makefile"]'
-expectSuccess 'with tests.files; toRelativePaths (recursiveFindFilesInBase "group-0" "Makefile")' '["nodes/group/Makefile"]'
-expectSuccess 'with tests.files; toRelativePaths (recursiveFindFilesInBase "groupRepeated-node" "Makefile")' '["nodes/groupRepeated-parentGroup/Makefile","nodes/groupRepeated-group/Makefile","nodes/groupRepeated-node/Makefile"]'
-expectSuccess 'with tests.files; toRelativePaths (recursiveFindFilesInBase "groupRepeated-parentGroup" "Makefile")' '["nodes/groupRepeated-parentGroup/Makefile","nodes/groupRepeated-group/Makefile","nodes/groupRepeated-node/Makefile"]'
-
 expectSuccess 'tests.private.entities.node.value.final' '{"x":2,"y":3}'
 expectSuccess 'tests.private.entities.node.value.config.nixverse-test' '2'
 expectSuccess 'tests.private.entities.group-0.value.final' '{"current":2,"currentPrivate":2,"x":2,"y":3}'
