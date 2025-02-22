@@ -118,13 +118,6 @@ cmd_node() {
 	cmd node "$@"
 }
 
-cmd_node_build() {
-	local node_name=$1
-	shift
-
-	build_node
-}
-
 cmd_node_bootstrap() {
 	local remote_build=''
 	OPTIND=1
@@ -213,6 +206,20 @@ cmd_node_deploy() {
 	flake=$(find_flake)
 
 	eval_nix "$flake" "nixverse.loadNodeDeployData (lib.splitString \" \" \"$*\")" | deploy
+}
+
+cmd_node_build() {
+	if [[ -z ${1-} ]]; then
+		cmd help node build
+		return
+	fi
+
+	local flake
+	flake=$(find_flake)
+
+	if [[ -e $flake/Makefile ]]; then
+		ENTITY_NAMES=$* make -C "$flake"
+	fi
 }
 
 deploy_node() {
@@ -831,7 +838,10 @@ rsync_fs() {
 }
 
 make() {
+	local nproc
+	nproc=$(nproc)
 	command make \
+		-j $((nproc + 1)) \
 		--no-builtin-rules \
 		--no-builtin-variables \
 		--warn-undefined-variables \
