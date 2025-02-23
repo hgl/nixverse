@@ -1,6 +1,6 @@
 #!@shell@
 # shellcheck shell=bash
-set -xeuo pipefail
+set -euo pipefail
 
 PATH=@path@:$PATH
 
@@ -205,7 +205,7 @@ cmd_node_deploy() {
 	local flake
 	flake=$(find_flake)
 
-	eval_nix "$flake" "nixverse.loadNodeDeployData (lib.splitString \" \" \"$*\")" | deploy
+	eval_nix --json "$flake" "nixverse.loadNodeDeployData (lib.splitString \" \" \"$*\")" | deploy
 }
 
 cmd_node_build() {
@@ -218,7 +218,16 @@ cmd_node_build() {
 	flake=$(find_flake)
 
 	if [[ -e $flake/Makefile ]]; then
-		ENTITY_NAMES=$* make -C "$flake"
+		local mk
+		mk=$(eval_nix --raw "$flake" 'nixverse.nodesMakefileVars')
+
+		local targets
+		targets=$(eval_nix --raw "$flake" "nixverse.getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
+		# shellcheck disable=SC2086
+		make -C "$flake" -f - $targets <<-EOF
+			$mk
+			include Makefile
+		EOF
 	fi
 }
 
@@ -342,7 +351,7 @@ cmd_node_value() {
 	local flake
 	flake=$(find_flake)
 
-	eval_nix "$flake" "nixverse.loadNodeValueData (lib.splitString \" \" \"$*\")"
+	eval_nix --json "$flake" "nixverse.getNodeValueData (lib.splitString \" \" \"$*\")"
 }
 
 cmd_secrets() {
@@ -537,18 +546,7 @@ EOF
 			build/secrets.yaml
 		local entity_names
 		entity_names=$(yq --raw-output 'keys | join(" ")' build/secrets.yaml)
-		eval_nix "$flake" "nixverse.loadNodeSecretsData (lib.splitString \" \" \"$entity_names\")" |
-			jq --raw-output '.[] | join(" ")' |
-			(
-				echo 'node_names :='
-				while read -r node_name node_dir sections; do
-					cat <<-EOF
-						node_names += $node_name
-						node_${node_name}_dir := $node_dir
-						node_${node_name}_secrets_sections := $sections
-					EOF
-				done
-			) |
+		eval_nix --raw "$flake" "nixverse.getSecretsMakefileVars (lib.splitString \" \" \"$entity_names\")" |
 			make -f - -f @out@/lib/nixverse/secrets.mk
 		sops --encrypt --indent 2 --output "$f" build/secrets.yaml
 		popd >/dev/null
@@ -689,11 +687,12 @@ EOF
 }
 
 eval_nix() {
-	local flake=$1
-	local expr=$2
+	local format=$1
+	local flake=$2
+	local expr=$3
 
 	nix eval \
-		--json \
+		"$format" \
 		--no-eval-cache \
 		--no-warn-dirty \
 		--apply "{ nixverse, ... }: let inherit (nixverse) lib lib'; in $expr" \

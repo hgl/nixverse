@@ -31,64 +31,95 @@ let
     ) entityObjs;
     nixverse = {
       inherit lib lib';
-      # TODO: use a more efficient way to calculate these data
-      loadNodeValueData =
-        rawEntityNames:
+      nodesMakefileVars =
         let
-          entityNames =
-            let
-              names = lib.unique rawEntityNames;
-            in
-            assert lib.all (
-              entityName:
-              if lib.hasAttr entityName final.entities then true else throw "Unknown node ${entityName}"
-            ) names;
-            names;
-          nodes = lib'.mapListToAttrs (
-            nodeName:
-            let
-              node = final.entities.${nodeName};
-            in
-            lib.nameValuePair nodeName (
-              filterRecursive (_: v: !(lib.isFunction v)) (lib.removeAttrs node.value [ "config" ])
-            )
-          ) (findNodeNames entityNames);
+          inherit (segregateEntityNames (lib.attrNames final.entities)) nodes groups;
         in
-        {
-          inherit nodes;
-          groups = lib'.mapListToAttrs (
-            groupName:
-            let
-              group = final.entities.${groupName};
-            in
-            lib.nameValuePair groupName {
-              parents = group.parentNames;
-              children = group.childNames;
-              effectiveNodes = foldChildNames groupName (
-                names: childName: names ++ lib.optional (lib.hasAttr childName nodes) childName
-              ) [ ];
-            }
-          ) (findGroupNames entityNames);
-        };
-      loadNodeSecretsData =
-        entityNames:
-        map (
-          nodeName:
-          let
-            entityObj = entityObjs.${nodeName};
-          in
-          [
-            nodeName
-            (
-              if entityObj.rawValue == null then
-                "nodes/${lib.head entityObj.parentNames}/${nodeName}"
-              else
-                "nodes/${nodeName}"
+        ''
+          .PHONY: ${toString (map (nodeName: "nodes/${nodeName}") (lib.attrNames nodes))}
+          ${toString (
+            lib.concatStringsSep "\n" (
+              lib.concatMap (
+                groupName:
+                let
+                  group = final.entities.${groupName};
+                  childNodes = lib.filter (childName: final.entities.${childName}.type == "node") group.childNames;
+                in
+                if childNodes == [ ] then [ ] else [ "${groupName}_node_names := ${toString childNodes}" ]
+              ) (lib.attrNames groups)
             )
-          ]
-          ++ map ({ parentName, ... }: parentName) (lib.reverseList (findAncestorNames nodeName))
-          ++ [ nodeName ]
-        ) (findNodeNames entityNames);
+          )}
+          ${toString (
+            lib.concatStringsSep "\n" (
+              lib.concatMap (
+                nodeName:
+                let
+                  node = final.entities.${nodeName};
+                in
+                [
+                  "node_${nodeName}_os := ${node.value.os}"
+                  "node_${nodeName}_channel := ${node.value.channel}"
+                ]
+              ) (lib.attrNames nodes)
+            )
+          )}
+        '';
+      getNodesMakefileTargets =
+        entityNames:
+        toString (map (nodeName: "nodes/${nodeName}") (findNodeNames (normalizeEntityNames entityNames)));
+      getNodeValueData =
+        entityNames:
+        let
+          inherit (segregateEntityNames (normalizeEntityNames entityNames)) nodes groups;
+        in
+        lib.mapAttrs (
+          groupName: _:
+          let
+            group = final.entities.${groupName};
+          in
+          {
+            inherit (group) type;
+            name = groupName;
+            parents = group.parentNames;
+            children = group.childNames;
+          }
+        ) groups
+        // lib.mapAttrs (
+          nodeName: _:
+          let
+            node = final.entities.${nodeName};
+          in
+          filterRecursive (_: v: !(lib.isFunction v)) (lib.removeAttrs node.value [ "config" ])
+        ) nodes;
+      getSecretsMakefileVars =
+        entityNames:
+        let
+          nodeNames = findNodeNames entityNames;
+        in
+        ''
+          node_names := ${toString nodeNames}
+          ${lib.concatStringsSep "\n" (
+            lib.concatMap (
+              nodeName:
+              let
+                entityObj = entityObjs.${nodeName};
+              in
+              [
+                "node_${nodeName}_dir := ${
+                  if entityObj.rawValue == null then
+                    "nodes/${lib.head entityObj.parentNames}/${nodeName}"
+                  else
+                    "nodes/${nodeName}"
+                }"
+                "node_${nodeName}_secrets_sections := ${
+                  toString (
+                    map ({ parentName, ... }: parentName) (lib.reverseList (findAncestorNames nodeName)) ++ [ nodeName ]
+                  )
+                }"
+              ]
+            ) nodeNames
+          )}
+        '';
     };
   };
   loadConfigurations =
@@ -548,6 +579,7 @@ let
           group = {
             ${entityName} = {
               inherit (entity) type;
+              name = entityName;
               parents = entity.parentNames;
               children = entity.childNames;
             };
@@ -802,34 +834,16 @@ let
         ) parentNames;
     in
     find entityName { };
-  foldChildNames =
-    groupName: f: nul:
+  normalizeEntityNames =
+    entityNames:
     let
-      fold =
-        childNames: nul: visited:
-        builtins.foldl'
-          (
-            accu: childName:
-            let
-              parent = fold entityObjs.${childName}.parentNames accu.value accu.visited;
-            in
-            if lib.hasAttr childName parent.visited then
-              parent
-            else
-              {
-                value = f parent.value childName;
-                visited = parent.visited // {
-                  ${childName} = true;
-                };
-              }
-          )
-          {
-            value = nul;
-            inherit visited;
-          }
-          childNames;
+      names = lib.unique entityNames;
     in
-    (fold entityObjs.${groupName}.childNames nul { }).value;
+    assert lib.all (
+      entityName:
+      if lib.hasAttr entityName final.entities then true else throw "Unknown node ${entityName}"
+    ) names;
+    names;
   findNodeNames =
     entityNames:
     let
@@ -856,39 +870,42 @@ let
         ) entityNames;
     in
     find entityNames { };
-  findGroupNames =
+  segregateEntityNames =
     entityNames:
-    let
-      find =
-        entityNames: visited:
-        lib.concatMap (
-          entityName:
-          let
-            entity = final.entities.${entityName};
-          in
-          if lib.hasAttr entityName visited then
-            [ ]
-          else
-            {
-              node = find entity.parentNames (
-                visited
+    builtins.foldl'
+      (
+        accu: entityName:
+        let
+          entity = final.entities.${entityName};
+        in
+        {
+          node = accu // {
+            nodes = accu.nodes // {
+              ${entityName} = true;
+            };
+          };
+          group =
+            let
+              inherit (segregateEntityNames entity.childNames) nodes groups;
+            in
+            accu
+            // {
+              nodes = accu.nodes // nodes;
+              groups =
+                accu.groups
                 // {
                   ${entityName} = true;
                 }
-              );
-              group =
-                [ entityName ]
-                ++ find (entity.childNames ++ entity.parentNames) (
-                  visited
-                  // {
-                    ${entityName} = true;
-                  }
-                );
-            }
-            .${entity.type}
-        ) entityNames;
-    in
-    find entityNames { };
+                // groups;
+            };
+        }
+        .${entity.type}
+      )
+      {
+        nodes = { };
+        groups = { };
+      }
+      entityNames;
   nodeOptions = import ./nodeOptions.nix lib;
   importDirOrFile =
     base: name: default:
