@@ -162,11 +162,10 @@ let
           entityName:
           { type, publicExist, ... }:
           let
-            loc = "${lib.optionalString (!publicExist) "private/"}nodes/current/${type}.nix";
+            loc = "${lib.optionalString (!publicExist) "private/"}nodes/${entityName}/${type}.nix";
           in
-          assert lib.assertMsg (
-            entityName != "current"
-          ) "\"current\" is a reserved node name, cannot be used for ${loc}";
+          assert lib.assertMsg (entityName != "common") "\"common\" is a reserved node name: ${loc}";
+          assert lib.assertMsg (entityName != "current") "\"current\" is a reserved node name: ${loc}";
           {
             node =
               let
@@ -207,9 +206,7 @@ let
                       assert lib.assertMsg (lib.all (name: name != entityName) names) "${loc} must not contain itself";
                       assert lib.all (
                         name:
-                        assert lib.assertMsg (
-                          name != "current"
-                        ) "\"current\" is a reserved node name, cannot be used for ${loc}";
+                        assert lib.assertMsg (name != "current") "\"current\" is a reserved node name: ${loc}";
                         true
                       ) names;
                       v
