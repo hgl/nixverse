@@ -347,6 +347,7 @@ deploy_node() {
 		fi
 		NIX_SSHOPTS=$ssh_opts nixos-rebuild switch \
 			--flake "$flake?submodules=1#$node_name" \
+			--fast \
 			--show-trace \
 			"${args[@]}"
 		;;
