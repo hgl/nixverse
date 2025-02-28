@@ -3,11 +3,12 @@
 set -euo pipefail
 
 PATH=@path@:$PATH
+default_parallel=10
 
 cmd_help() {
 	if [[ -z ${1-} ]]; then
 		cat <<EOF
-Usage: nixverse <command> [ARGUMENT]...
+Usage: nixverse <command> [ARGUMENT...]
 
 Commands:
   node         manage nodes
@@ -24,7 +25,7 @@ EOF
 cmd_help_node() {
 	if [[ -z ${1-} ]]; then
 		cat <<EOF
-Usage: nixverse node <command> [ARGUMENT]...
+Usage: nixverse node <command> [ARGUMENT...]
 
 Manage nodes
 
@@ -41,7 +42,7 @@ EOF
 
 cmd_help_node_deploy() {
 	cat <<EOF
-Usage: nixverse node deploy [OPTION]... <NODE>...
+Usage: nixverse node deploy [OPTION...] <NODE...>
 
 Deploy one or more nodes
 EOF
@@ -50,7 +51,7 @@ EOF
 cmd_help_secrets() {
 	if [[ -z ${1-} ]]; then
 		cat <<EOF
-Usage: nixverse secrets <command> [ARGUMENT]...
+Usage: nixverse secrets <command> [ARGUMENT...]
 
 Manage secrets
 
@@ -68,7 +69,7 @@ EOF
 
 cmd_help_secrets_edit() {
 	cat <<EOF
-Usage: nixverse secrets edit [OPTION]... [FILE]
+Usage: nixverse secrets edit [OPTION...] [FILE]
 
 Edit an encrytped file.
 With no FILE, edit top secrets.yaml.
@@ -80,7 +81,7 @@ EOF
 
 cmd_help_secrets_encrypt() {
 	cat <<EOF
-Usage: nixverse secrets encrypt [OPTION]... [FILE] [OUTPUT]
+Usage: nixverse secrets encrypt [OPTION...] [FILE] [OUTPUT]
 
 Encrypt a file.
 With no FILE or FILE is -, encrypt standard input.
@@ -118,40 +119,45 @@ cmd_node() {
 	cmd node "$@"
 }
 
-cmd_node_bootstrap() {
-	local remote_build=''
-	OPTIND=1
-	while getopts 'r' opt; do
-		case $opt in
-		r) remote_build=1 ;;
-		?) exit 1 ;;
+cmd_node_install() {
+	local args
+	args=$(getopt -n nixverse -o 'h' --long '--help' -- "$@")
+	eval set -- "$args"
+	unset args
+
+	while true; do
+		case $1 in
+		-h | --help)
+			cmd help node install
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
 		esac
 	done
-	shift $((OPTIND - 1))
 
-	local node_name=$1
-	local ssh_dst=${2-}
-
-	local use_disko=''
-	local f
-	if f=$(find_node_file partition.bash) && [[ -n $f ]]; then
-		#shellcheck disable=SC2029
-		ssh "$ssh_dst" "$(<"$f")"
-	elif f=$(find_node_file disk-config.nix) && [[ -n $f ]]; then
-		use_disko=1
-	else
-		local boot_type boot_device root_format
-		IFS=, read -r boot_type boot_device root_format < <(
-			jq --raw-output '"\(.boot.type),\(.boot.device.path),\(.boot.device.root.format)"' <<<"$node_json"
-		)
-		#shellcheck disable=SC2029
-		ssh "$ssh_dst" "
-			BOOT_TYPE='$boot_type'
-			BOOT_DEVICE='$boot_device'
-			ROOT_FORMAT='$root_format'
-			$(<@out@/libexec/nixverse/partition)
-		"
+	if [[ $# = 0 ]]; then
+		cmd help node install >&2
+		return 1
 	fi
+
+	local entity_name=$1
+	local boot_type boot_device root_format
+	{
+		read -r partition_script
+		IFS=, read -r use_disko boot_type boot_device root_format
+	} < <(eval_nixverse_nix json "$flake" "nixverse.getNodeInstallData")
+
+	if [[ -z $partition_script ]]; then
+		partition_script=@out@/libexec/nixverse/partition
+	fi
+
 	args=(
 		--generate-hardware-config
 		nixos-generate-config
@@ -160,19 +166,117 @@ cmd_node_bootstrap() {
 
 	if [[ -z $use_disko ]]; then
 		args+=(--phases 'install')
+		#shellcheck disable=SC2029
+		ssh "$ssh_dst" "
+			$partition_script
+			partition '$boot_type' '$boot_device' '$root_format'
+		"
 	else
 		args+=(--phases 'disko,install')
 	fi
-	if [[ -n $remote_build ]]; then
+	if [[ -n $build_on_remote ]]; then
 		args+=(--build-on-remote)
 	fi
 	nixos-anywhere \
 		--flake "$flake#$node_name" \
 		"${args[@]}" \
 		"$ssh_dst"
-	ssh "$ssh_dst" nix-env -iA nixos.rsync
-	rsync_fs /mnt
 }
+
+install_node() {
+	set -euo pipefail
+
+	local flake=$1
+	local node_name=$2
+	local node_dir=$3
+	local use_disko=$4
+	local partition_script=$5
+	local build_on_remote=$6
+	local target_host=$7
+
+	local args=()
+	if [[ -z $use_disko ]]; then
+		args+=(--phases 'install')
+		#shellcheck disable=SC2029
+		ssh "$target_host" "$(<"$partition_script")"
+	else
+		args+=(--phases 'disko,install')
+	fi
+	if [[ -n $build_on_remote ]]; then
+		args+=(--build-on-remote)
+	fi
+	nixos-anywhere \
+		--flake "$flake?submodules=1#$node_name" \
+		--generate-hardware-config nixos-generate-config "$flake/$node_dir/hardware-configuration.nix" \
+		"${args[@]}" \
+		"$target_host"
+}
+
+cmd_node_build() {
+	local args
+	args=$(getopt -n nixverse -o 'hp:' --long '--help,--parallel:' -- "$@")
+	eval set -- "$args"
+	unset args
+
+	local parallel=$default_parallel
+	while true; do
+		case $1 in
+		-p | --parallel)
+			parallel=$2
+			if [[ $parallel = 0 || ! $parallel =~ ^[0-9]+$ ]]; then
+				echo >&2 "$1 must specify a positive number"
+				return 1
+			fi
+			shift 2
+			;;
+		-h | --help)
+			cmd help node build
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
+		esac
+	done
+
+	if [[ $# = 0 ]]; then
+		cmd help node build >&2
+		return 1
+	fi
+
+	local flake
+	flake=$(find_flake)
+	run_make "$flake" "$@"
+	eval_nixverse_nix json "$flake" "nixverse.getNodeBuildJobs (lib.splitString \" \" \"$*\")" |
+		parallel "$parallel"
+}
+
+build_node() {
+	set -euo pipefail
+
+	local flake=$1
+	local node_name=$2
+	local node_os=$3
+
+	case $node_os in
+	nixos)
+		nix build --no-link "$flake?submodules=1#nixosConfigurations.$node_name.config.system.build.toplevel"
+		;;
+	darwin)
+		nix build --no-link "$flake?submodules=1#darwinConfigurations.$node_name.system"
+		;;
+	*)
+		echo >&2 "Unknown node OS: $node_os"
+		return 1
+		;;
+	esac
+}
+export -f build_node
 
 cmd_node_deploy() {
 	local args
@@ -180,7 +284,7 @@ cmd_node_deploy() {
 	eval set -- "$args"
 	unset args
 
-	local parallel=10
+	local parallel=$default_parallel
 	while true; do
 		case $1 in
 		-p | --parallel)
@@ -214,10 +318,13 @@ cmd_node_deploy() {
 	local flake
 	flake=$(find_flake)
 	run_make "$flake" "$@"
-	eval_nix --json "$flake" "nixverse.getNodeDeployJobs (lib.splitString \" \" \"$*\")" | parallel "$parallel"
+	eval_nixverse_nix json "$flake" "nixverse.getNodeDeployJobs (lib.splitString \" \" \"$*\")" |
+		parallel "$parallel"
 }
 
 deploy_node() {
+	set -euo pipefail
+
 	local flake=$1
 	local node_name=$2
 	local node_os=$3
@@ -327,7 +434,7 @@ cmd_node_value() {
 	local flake
 	flake=$(find_flake)
 
-	eval_nix --json "$flake" "nixverse.getNodeValueData (lib.splitString \" \" \"$*\")"
+	eval_nixverse_nix json "$flake" "nixverse.getNodeValueData (lib.splitString \" \" \"$*\")"
 }
 
 cmd_secrets() {
@@ -522,7 +629,7 @@ EOF
 			build/secrets.yaml
 		local entity_names
 		entity_names=$(yq --raw-output 'keys | join(" ")' build/secrets.yaml)
-		eval_nix --raw "$flake" "nixverse.getSecretsMakefileVars (lib.splitString \" \" \"$entity_names\")" |
+		eval_nixverse_nix raw "$flake" "nixverse.getSecretsMakefileVars (lib.splitString \" \" \"$entity_names\")" |
 			make -f - -f @out@/lib/nixverse/secrets.mk
 		sops --encrypt --indent 2 --output "$f" build/secrets.yaml
 		popd >/dev/null
@@ -662,18 +769,31 @@ EOF
 	return 1
 }
 
-eval_nix() {
+eval_nixverse_nix() {
 	local format=$1
 	local flake=$2
 	local expr=$3
 
+	local args=()
+	case $format in
+	json | raw)
+		args+=("--$format")
+		;;
+	*)
+		echo >&"Unknown format: $format"
+		return 1
+		;;
+	esac
 	nix eval \
-		"$format" \
-		--no-eval-cache \
 		--no-warn-dirty \
 		--apply "{ nixverse, ... }: let inherit (nixverse) lib lib'; in $expr" \
 		--show-trace \
+		"${args[@]}" \
 		"$flake?submodules=1#."
+}
+
+nix() {
+	command nix --extra-experimental-features 'nix-command flakes' "$@"
 }
 
 find_flake() {
@@ -708,10 +828,10 @@ run_make() {
 	fi
 
 	local mk
-	mk=$(eval_nix --raw "$flake" 'nixverse.nodesMakefileVars')
+	mk=$(eval_nixverse_nix raw "$flake" 'nixverse.nodesMakefileVars')
 
 	local targets
-	targets=$(eval_nix --raw "$flake" "nixverse.getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
+	targets=$(eval_nixverse_nix raw "$flake" "nixverse.getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
 	# shellcheck disable=SC2086
 	make -C "$flake" -f - $targets <<-EOF
 		$mk

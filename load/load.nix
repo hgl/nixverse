@@ -67,18 +67,30 @@ let
       getNodesMakefileTargets =
         entityNames:
         toString (map (nodeName: "nodes/${nodeName}") (findNodeNames (normalizeEntityNames entityNames)));
+      getNodeBuildJobs =
+        entityNames:
+        let
+          nodeNames = findNodeNames (normalizeEntityNames entityNames);
+        in
+        lib.concatMap (
+          nodeName:
+          let
+            node = final.entities.${nodeName};
+          in
+          if node.value.deploy.buildHost != "" then
+            [ ]
+          else
+            [
+              {
+                name = nodeName;
+                command = "build_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.value.os}";
+              }
+            ]
+        ) nodeNames;
       getNodeDeployJobs =
         entityNames:
         let
-          toShellValue =
-            v:
-            let
-              str = toString v;
-            in
-            if str == "" then "''" else lib.escapeShellArg str;
           nodeNames = findNodeNames (normalizeEntityNames entityNames);
-        in
-        let
           numNode = lib.length nodeNames;
         in
         map (
@@ -990,5 +1002,11 @@ let
       map (subv: filterRecursive pred subv) v
     else
       v;
+  toShellValue =
+    v:
+    let
+      str = toString v;
+    in
+    if str == "" then "''" else lib.escapeShellArg str;
 in
 final
