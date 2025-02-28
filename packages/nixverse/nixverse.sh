@@ -176,12 +176,21 @@ cmd_node_bootstrap() {
 
 cmd_node_deploy() {
 	local args
-	args=$(getopt -n nixverse -o 'h' --long '--help' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long '--help,--parallel:' -- "$@")
 	eval set -- "$args"
 	unset args
 
+	local parallel=10
 	while true; do
 		case $1 in
+		-p | --parallel)
+			parallel=$2
+			if [[ $parallel = 0 || ! $parallel =~ ^[0-9]+$ ]]; then
+				echo >&2 "$1 must specify a positive number"
+				return 1
+			fi
+			shift 2
+			;;
 		-h | --help)
 			cmd help node deploy
 			return
@@ -204,31 +213,8 @@ cmd_node_deploy() {
 
 	local flake
 	flake=$(find_flake)
-
-	eval_nix --json "$flake" "nixverse.loadNodeDeployData (lib.splitString \" \" \"$*\")" | deploy
-}
-
-cmd_node_build() {
-	if [[ -z ${1-} ]]; then
-		cmd help node build
-		return
-	fi
-
-	local flake
-	flake=$(find_flake)
-
-	if [[ -e $flake/Makefile ]]; then
-		local mk
-		mk=$(eval_nix --raw "$flake" 'nixverse.nodesMakefileVars')
-
-		local targets
-		targets=$(eval_nix --raw "$flake" "nixverse.getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
-		# shellcheck disable=SC2086
-		make -C "$flake" -f - $targets <<-EOF
-			$mk
-			include Makefile
-		EOF
-	fi
+	run_make "$flake" "$@"
+	eval_nix --json "$flake" "nixverse.getNodeDeployJobs (lib.splitString \" \" \"$*\")" | parallel "$parallel"
 }
 
 deploy_node() {
@@ -237,27 +223,19 @@ deploy_node() {
 	local node_os=$3
 	local target_host=$4
 	local build_host=$5
-	local sudo=$6
+	local use_remote_sudo=$6
 	local ssh_opts=$7
-
-	build_node
 
 	case $node_os in
 	nixos)
 		local args=()
-		args+=(
-
-		)
 		if [[ -n $target_host ]]; then
 			args+=(--target-host "$target_host")
 		fi
 		if [[ -n $build_host ]]; then
-			args+=(
-				--build-host "$build_host"
-				--fast
-			)
+			args+=(--build-host "$build_host")
 		fi
-		if [[ -n $sudo ]]; then
+		if [[ -n $use_remote_sudo ]]; then
 			args+=(--use-remote-sudo)
 		fi
 		NIX_SSHOPTS=$ssh_opts nixos-rebuild switch \
@@ -266,11 +244,9 @@ deploy_node() {
 			"${args[@]}"
 		;;
 	darwin)
-		args+=(
-			darwin-rebuild switch
-			--flake "$flake?submodules=1#$node_name"
+		darwin-rebuild switch \
+			--flake "$flake?submodules=1#$node_name" \
 			--show-trace
-		)
 		;;
 	*)
 		echo >&2 "Unknown node OS: $node_os"
@@ -721,6 +697,26 @@ find_flake() {
 		fi
 		flake=$(dirname "$flake")
 	done
+}
+
+run_make() {
+	local flake=$1
+	shift
+
+	if [[ ! -e $flake/Makefile ]]; then
+		return
+	fi
+
+	local mk
+	mk=$(eval_nix --raw "$flake" 'nixverse.nodesMakefileVars')
+
+	local targets
+	targets=$(eval_nix --raw "$flake" "nixverse.getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
+	# shellcheck disable=SC2086
+	make -C "$flake" -f - $targets <<-EOF
+		$mk
+		include Makefile
+	EOF
 }
 
 find_node_file() {

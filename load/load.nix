@@ -67,6 +67,33 @@ let
       getNodesMakefileTargets =
         entityNames:
         toString (map (nodeName: "nodes/${nodeName}") (findNodeNames (normalizeEntityNames entityNames)));
+      getNodeDeployJobs =
+        entityNames:
+        let
+          toShellValue =
+            v:
+            let
+              str = toString v;
+            in
+            if str == "" then "''" else lib.escapeShellArg str;
+          nodeNames = findNodeNames (normalizeEntityNames entityNames);
+        in
+        let
+          numNode = lib.length nodeNames;
+        in
+        map (
+          nodeName:
+          let
+            node = final.entities.${nodeName};
+          in
+          assert lib.assertMsg (
+            numNode != 1 -> node.deploy.targetHost != ""
+          ) "deploy multiple nodes to local is not allowed";
+          {
+            name = nodeName;
+            command = "deploy_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.value.os} ${toShellValue node.value.deploy.targetHost} ${toShellValue node.value.deploy.buildHost} ${toShellValue node.value.deploy.buildHost} ${toShellValue node.value.deploy.useRemoteSudo} ${toShellValue node.value.deploy.sshOpts}";
+          }
+        ) nodeNames;
       getNodeValueData =
         entityNames:
         let

@@ -67,6 +67,7 @@
                 ssh-to-age
                 sops
                 yq
+                util-linux # for testing getopt
                 (writeShellScriptBin "run" ''
                   for i in $(seq 1 $((1 + $RANDOM % 4))); do
                     echo doing step $i

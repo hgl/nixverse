@@ -13,6 +13,7 @@
   nixos-anywhere,
   nixos-rebuild,
   darwin-rebuild,
+  buildGoModule,
 }:
 runCommand "nixverse"
   {
@@ -40,6 +41,12 @@ runCommand "nixverse"
           nixos-rebuild
           darwin-rebuild
           (builtins.placeholder "out")
+          (buildGoModule {
+            name = "nixverse";
+            src = ../..;
+            vendorHash = "sha256-osBO3GTp7JvK3+Sz678cKUgl+10FJI9n6AVLpBTeIrA=";
+            subPackages = [ "cmd/parallel" ];
+          })
         ]
       }
     chmod a=rx $out/bin/nixverse

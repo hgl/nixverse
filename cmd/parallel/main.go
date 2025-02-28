@@ -1,0 +1,320 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/sync/semaphore"
+)
+
+type job struct {
+	name         string
+	command      string
+	latestLine   string
+	maxNameWidth int
+	nameWidth    int
+	status       jobStatus
+	err          error
+	file         *os.File
+}
+
+func (job job) String() string {
+	switch job.status {
+	case jobStatusWaiting:
+		return "🕘waiting"
+	case jobStatusRunning:
+		return job.latestLine
+	case jobStatusMetaError:
+		return "❌" + job.err.Error()
+	case jobStatusRunError:
+		return "❌Failed, messages are displayed after the rest are finished."
+	case jobStatusSucceeded:
+		return "✅Done"
+	default:
+		panic("unknown job status")
+	}
+}
+
+type jobStatus int
+
+const (
+	jobStatusWaiting jobStatus = iota
+	jobStatusRunning
+	jobStatusSucceeded
+	jobStatusMetaError
+	jobStatusRunError
+)
+
+func (job job) FilterValue() string { return "" }
+
+type itemDelegate struct{}
+
+func (d itemDelegate) Height() int                             { return 1 }
+func (d itemDelegate) Spacing() int                            { return 0 }
+func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	job := listItem.(job)
+	name := lipgloss.NewStyle().
+		Bold(true).
+		PaddingRight(job.maxNameWidth - job.nameWidth).
+		SetString(job.name).String()
+
+	fmt.Fprintf(w, "%s  %s", name, job)
+}
+
+type jobLatestLineMsg struct {
+	index int
+	text  string
+}
+
+type jobFailedMsg struct {
+	index int
+}
+
+type jobMetaErrorMsg struct {
+	index int
+	err   error
+}
+
+type jobSucceededMsg struct {
+	index int
+}
+type jobsSucceededMsg struct{}
+
+type model struct {
+	list       list.Model
+	ch         chan tea.Msg
+	failedJobs []int
+}
+
+var errJobFailed = errors.New("some job failed")
+
+func (m model) nextStatus() tea.Msg {
+	return <-m.ch
+}
+
+func (m model) Init() tea.Cmd {
+	return m.nextStatus
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		height := msg.Height
+		numItem := len(m.list.Items())
+		if numItem > height {
+			m.list.SetShowPagination(true)
+		} else {
+			height = numItem
+		}
+		m.list.SetSize(msg.Width, height)
+		return m, nil
+	case jobLatestLineMsg:
+		job := m.list.Items()[msg.index].(job)
+		job.latestLine = msg.text
+		job.status = jobStatusRunning
+		m.list.SetItem(msg.index, job)
+		return m, m.nextStatus
+	case jobMetaErrorMsg:
+		job := m.list.Items()[msg.index].(job)
+		job.status = jobStatusRunError
+		job.err = msg.err
+		m.list.SetItem(msg.index, job)
+		return m, m.nextStatus
+	case jobFailedMsg:
+		m.failedJobs = append(m.failedJobs, msg.index)
+		job := m.list.Items()[msg.index].(job)
+		job.status = jobStatusRunError
+		m.list.SetItem(msg.index, job)
+		return m, m.nextStatus
+	case jobSucceededMsg:
+		job := m.list.Items()[msg.index].(job)
+		job.status = jobStatusSucceeded
+		m.list.SetItem(msg.index, job)
+		return m, m.nextStatus
+	case jobsSucceededMsg:
+		return m, tea.Quit
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+func (m model) View() string {
+	return m.list.View() + "\n"
+}
+
+func run() error {
+	var jobCmds []struct {
+		Name    string
+		Command string
+	}
+	err := json.NewDecoder(os.Stdin).Decode(&jobCmds)
+	if errors.Is(err, io.EOF) {
+		return errors.New("received empty json")
+	}
+	if err != nil {
+		return err
+	}
+	if len(jobCmds) == 0 {
+		return errors.New("no command to run")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	if len(jobCmds) == 1 {
+		cmd := exec.CommandContext(ctx, "bash", "-c", jobCmds[0].Command)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+
+	numParallelJobs, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		return err
+	}
+	maxWidth := 0
+	jobs := make([]job, len(jobCmds))
+	for i, jobCmd := range jobCmds {
+		f, err := os.CreateTemp("", "*")
+		if err != nil {
+			return err
+		}
+		defer os.Remove(f.Name())
+		defer f.Close()
+		job := job{
+			name:      jobCmd.Name,
+			command:   jobCmd.Command,
+			nameWidth: ansi.StringWidth(jobCmd.Name),
+			file:      f,
+		}
+		if job.nameWidth > maxWidth {
+			maxWidth = job.nameWidth
+		}
+		jobs[i] = job
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(jobCmds))
+	sem := semaphore.NewWeighted(int64(numParallelJobs))
+	ch := make(chan tea.Msg)
+	go func() {
+		for i, jobCmd := range jobCmds {
+			err := sem.Acquire(ctx, 1)
+			if err != nil {
+				go func() { ch <- jobMetaErrorMsg{i, err} }()
+				continue
+			}
+
+			cmd := exec.CommandContext(ctx, "bash", "-c", jobCmd.Command)
+			pr, pw := io.Pipe()
+			cmd.Stdout = pw
+			cmd.Stderr = pw
+			err = cmd.Start()
+			if err != nil {
+				go func() { ch <- jobMetaErrorMsg{i, err} }()
+				continue
+			}
+			go func() {
+				defer sem.Release(1)
+				defer wg.Done()
+				err := cmd.Wait()
+				if _, ok := err.(*exec.ExitError); ok {
+					ch <- jobFailedMsg{i}
+					return
+				}
+				if err != nil {
+					ch <- jobMetaErrorMsg{i, err}
+					return
+				}
+				ch <- jobSucceededMsg{i}
+			}()
+			r := io.TeeReader(pr, jobs[i].file)
+			scan := bufio.NewScanner(r)
+			go func() {
+				for scan.Scan() {
+					ch <- jobLatestLineMsg{i, scan.Text()}
+				}
+				err := scan.Err()
+				if err != nil {
+					ch <- jobMetaErrorMsg{i, err}
+				}
+			}()
+		}
+		wg.Wait()
+		ch <- jobsSucceededMsg{}
+	}()
+
+	items := make([]list.Item, len(jobs))
+	for i, job := range jobs {
+		job.maxNameWidth = maxWidth
+		items[i] = list.Item(job)
+	}
+
+	l := list.New(items, itemDelegate{}, 0, 5)
+	l.KeyMap.CursorDown.SetKeys()
+	l.KeyMap.CursorUp.SetKeys()
+	l.KeyMap.PrevPage.SetKeys("left", "up", "h", "k", "pgup", "b", "u")
+	l.KeyMap.NextPage.SetKeys("right", "down", "l", "j", "pgdown", "f", "d")
+	l.Styles.PaginationStyle = l.Styles.PaginationStyle.PaddingLeft(0)
+	l.Paginator.ActiveDot = l.Styles.ActivePaginationDot.Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "255"}).String()
+	l.Paginator.InactiveDot = l.Styles.InactivePaginationDot.Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "242"}).String()
+	l.SetShowTitle(false)
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+	l.SetShowPagination(false)
+	l.SetShowHelp(false)
+	m := model{list: l, ch: ch, failedJobs: make([]int, 0)}
+	tm, err := tea.NewProgram(m).Run()
+	if err != nil {
+		return err
+	}
+	m = tm.(model)
+	for i, jobIndex := range m.failedJobs {
+		job := m.list.Items()[jobIndex].(job)
+		if i != 0 {
+			fmt.Fprintln(os.Stderr, "")
+		}
+		title := lipgloss.NewStyle().Foreground(lipgloss.Color("160")).
+			SetString("### Output of " + job.name)
+		fmt.Fprintln(os.Stderr, title)
+		_, err := job.file.Seek(0, 0)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(os.Stderr, job.file)
+		if err != nil {
+			return err
+		}
+	}
+	if len(m.failedJobs) != 0 {
+		return errJobFailed
+	}
+	return nil
+}
+
+func main() {
+	err := run()
+	if err == errJobFailed {
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}

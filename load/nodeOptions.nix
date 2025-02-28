@@ -36,4 +36,27 @@ lib: {
     );
     default = null;
   };
+  deploy = lib.mkOption {
+    type = lib.types.submodule {
+      options = {
+        buildHost = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+        };
+        targetHost = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+        };
+        useRemoteSudo = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+        };
+        sshOpts = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+        };
+      };
+    };
+    default = { };
+  };
 }
