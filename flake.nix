@@ -2,7 +2,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nixos-anywhere = {
-      url = "github:nix-community/nixos-anywhere";
+      url = "github:nix-community/nixos-anywhere/77e6a4e14baa93a29952ea9f0e4a59a29cca09e9";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-darwin = {
@@ -107,6 +107,8 @@
                 "groupEmpty"
                 "groupEmptyCommon"
                 "groupEmptyDeep"
+                "disallowedNodeValue"
+                "wrongNodeValue"
                 "confPath"
                 "hwconfPath"
                 "files"

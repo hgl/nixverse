@@ -1,0 +1,4 @@
+{
+  os = "xxx";
+  channel = "unstable";
+}

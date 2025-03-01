@@ -20,8 +20,7 @@ runCommand "nixverse"
     meta.mainProgram = "nixverse";
   }
   ''
-    mkdir -p $out/{bin,libexec/nixverse,lib/nixverse}
-    cp ${./partition.sh} $out/libexec/nixverse/partition
+    mkdir -p $out/{bin,lib/nixverse}
     cp ${./secrets.mk} $out/lib/nixverse/secrets.mk
     substitute ${./nixverse.sh} $out/bin/nixverse \
       --subst-var-by shell ${lib.getExe bash} \
@@ -37,7 +36,11 @@ runCommand "nixverse"
           ssh-to-age
           jq
           yq
-          nixos-anywhere
+          (nixos-anywhere.overrideAttrs (
+            finalAttrs: previousAttrs: {
+              patches = [ ./nixos-anywhere.patch ];
+            }
+          ))
           nixos-rebuild
           darwin-rebuild
           (builtins.placeholder "out")

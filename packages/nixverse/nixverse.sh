@@ -189,28 +189,44 @@ install_node() {
 	local flake=$1
 	local node_name=$2
 	local node_dir=$3
-	local use_disko=$4
+	local ssh_host_key=$4
 	local partition_script=$5
 	local build_on_remote=$6
 	local target_host=$7
+	shift 7
 
 	local args=()
-	if [[ -z $use_disko ]]; then
-		args+=(--phases 'install')
-		#shellcheck disable=SC2029
-		ssh "$target_host" "$(<"$partition_script")"
+	for sshOpt; do
+		args+=(-o "$sshOpt")
+	done
+	if [[ $partition_script = disko ]]; then
+		args+=(--phases 'disko,install,reboot')
 	else
-		args+=(--phases 'disko,install')
+		args+=(--phases 'install,reboot' --partition-script "$partition_script")
 	fi
 	if [[ -n $build_on_remote ]]; then
 		args+=(--build-on-remote)
 	fi
+
+	if [[ -n $ssh_host_key ]]; then
+		local tmpdir
+		tmpdir=$(mktemp --directory)
+		trap 'rm -r $tmpdir' EXIT
+
+		d=$tmpdir/etc/ssh
+		mkdir -p "$d"
+		cp -p "$flake/build/$node_dir/ssh_host_ed25519_key" "$d"
+		cp -p "$ssh_host_key.pub" "$d"
+		args+=(--extra-files "$tmpdir")
+	fi
+
 	nixos-anywhere \
 		--flake "$flake?submodules=1#$node_name" \
 		--generate-hardware-config nixos-generate-config "$flake/$node_dir/hardware-configuration.nix" \
 		"${args[@]}" \
 		"$target_host"
 }
+export -f install_node
 
 cmd_node_build() {
 	local args
@@ -833,11 +849,21 @@ run_make() {
 
 	local targets
 	targets=$(eval_nixverse_nix raw "$flake" "nixverse.getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
+	local nproc
+	nproc=$(nproc)
 	# shellcheck disable=SC2086
-	make -C "$flake" -f - $targets <<-EOF
+	make -j $((nproc + 1)) -C "$flake" -f - $targets <<-EOF
 		$mk
 		include Makefile
 	EOF
+}
+
+make() {
+	command make \
+		--no-builtin-rules \
+		--no-builtin-variables \
+		--warn-undefined-variables \
+		"$@"
 }
 
 find_node_file() {
@@ -951,17 +977,6 @@ rsync_fs() {
 				"${ssh_dst:+$ssh_dst:}$target_dir$home/"
 		)
 	fi
-}
-
-make() {
-	local nproc
-	nproc=$(nproc)
-	command make \
-		-j $((nproc + 1)) \
-		--no-builtin-rules \
-		--no-builtin-variables \
-		--warn-undefined-variables \
-		"$@"
 }
 
 cmd() {

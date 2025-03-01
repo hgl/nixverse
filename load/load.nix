@@ -67,6 +67,28 @@ let
       getNodesMakefileTargets =
         entityNames:
         toString (map (nodeName: "nodes/${nodeName}") (findNodeNames (normalizeEntityNames entityNames)));
+      getNodeInstallJobs =
+        entityNames:
+        let
+          nodeNames = findNodeNames (normalizeEntityNames entityNames);
+        in
+        map (
+          nodeName:
+          let
+            node = final.entities.${nodeName};
+          in
+          assert lib.assertMsg (
+            node.value.install.targetHost != ""
+          ) "Either install.targetHost or deploy.targetHost must not be empty for node ${nodeName}";
+          {
+            name = nodeName;
+            command = "install_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.dir} ${toShellValue node.sshHostKey} ${
+              toShellValue (if node.diskConfigFiles != [ ] then "disko" else node.value.install.partitions.script)
+            } ${toShellValue node.value.install.buildOnRemote} ${toShellValue node.value.install.targetHost} ${
+              toString (map (opt: toShellValue opt) node.value.deploy.sshOpts)
+            }";
+          }
+        ) nodeNames;
       getNodeBuildJobs =
         entityNames:
         let
@@ -83,7 +105,7 @@ let
             [
               {
                 name = nodeName;
-                command = "build_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.value.os}";
+                command = "build_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.dir}";
               }
             ]
         ) nodeNames;
@@ -99,11 +121,16 @@ let
             node = final.entities.${nodeName};
           in
           assert lib.assertMsg (
-            numNode != 1 -> node.deploy.targetHost != ""
-          ) "deploy multiple nodes to local is not allowed";
+            node.value.deploy.local == true && node.value.deploy.targetHost == ""
+            || node.value.deploy.local == null && node.value.deploy.targetHost != ""
+          ) "Either deploy.local must be true or deploy.targetHost must not be empty for node ${nodeName}";
+          assert lib.assertMsg (numNode != 1 -> node.value.deploy.targetHost != "")
+            "Deploying multiple nodes where some of them are local is not allowed, deploy the local nodes individually.";
           {
             name = nodeName;
-            command = "deploy_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.value.os} ${toShellValue node.value.deploy.targetHost} ${toShellValue node.value.deploy.buildHost} ${toShellValue node.value.deploy.buildHost} ${toShellValue node.value.deploy.useRemoteSudo} ${toShellValue node.value.deploy.sshOpts}";
+            command = "deploy_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.value.os} ${toShellValue node.value.deploy.targetHost} ${toShellValue node.value.deploy.buildHost} ${toShellValue node.value.deploy.buildHost} ${toShellValue node.value.deploy.useRemoteSudo} ${
+              toShellValue lib.concatMapStringsSep " " (opt: "-o ${toShellValue opt}") node.value.deploy.sshOpts
+            }";
           }
         ) nodeNames;
       getNodeValueData =
@@ -141,19 +168,12 @@ let
             lib.concatMap (
               nodeName:
               let
-                entityObj = entityObjs.${nodeName};
+                node = final.entities.${nodeName};
               in
               [
-                "node_${nodeName}_dir := ${
-                  if entityObj.rawValue == null then
-                    "nodes/${lib.head entityObj.parentNames}/${nodeName}"
-                  else
-                    "nodes/${nodeName}"
-                }"
+                "node_${nodeName}_dir := ${node.dir}"
                 "node_${nodeName}_secrets_sections := ${
-                  toString (
-                    map ({ parentName, ... }: parentName) (lib.reverseList (findAncestorNames nodeName)) ++ [ nodeName ]
-                  )
+                  toString (map ({ parentName, ... }: parentName) (findAncestorNames nodeName) ++ [ nodeName ])
                 }"
               ]
             ) nodeNames
@@ -341,21 +361,23 @@ let
     let
       inherit (entityObjs.${nodeName}) rawValue parentNames;
       inherit (nodeValue) os channel;
+      nodeDir = "nodes${lib.optionalString (rawValue == null) "/${lib.head parentNames}"}/${nodeName}";
       nodeValue =
-        builtins.foldl' (
-          accu: { value, ... }: lib.recursiveUpdate accu (lib.removeAttrs value (lib.attrNames nodeOptions))
-        ) { } valueLocs
+        builtins.foldl' (accu: { value, ... }: lib.recursiveUpdate accu value) { } valueLocs
         // (lib.evalModules {
           modules =
             [
-              { options = nodeOptions; }
+              {
+                imports = [ ./nodeModule.nix ];
+                _module.check = false;
+              }
             ]
             ++ lib.imap0 (
               i:
               { value, loc }:
               {
                 _file = loc;
-                config = lib.mkOverride (1000 + i) (lib.intersectAttrs nodeOptions value);
+                config = lib.mkOverride (1000 + i) value;
               }
             ) valueLocs;
         }).config
@@ -672,7 +694,7 @@ let
               device = "/dev/disk/by-partlabel/swap";
             };
           }
-          ++ lib.optional hasSshHostKey {
+          ++ lib.optional (sshHostKey != "") {
             imports = [ inputs.sops-nix.nixosModules.sops ];
             services.openssh.hostKeys = [ ];
             sops =
@@ -683,13 +705,6 @@ let
                 defaultSopsFile = lib.mkDefault secretsYamlFile;
               };
           }
-          ++ lib.optional (os == "nixos") (
-            { pkgs, ... }:
-            {
-              # Needed for syncing fs when deploying
-              environment.systemPackages = [ pkgs.rsync ];
-            }
-          )
           ++ lib.optional (homeFiles != { }) (
             { pkgs', ... }:
             {
@@ -730,13 +745,9 @@ let
         let
           paths = findFilesInNodeRecursive nodeName "configuration.nix";
         in
-        assert lib.assertMsg (lib.length paths != 0)
-          "Missing nodes${
-            lib.optionalString (rawValue == null) "/${lib.head parentNames}"
-          }/${nodeName}/configuration.nix";
-        paths
-        ++ findFilesInNodeRecursive nodeName "hardware-configuration.nix"
-        ++ findFilesInNodeRecursive nodeName "disk-config.nix";
+        assert lib.assertMsg (lib.length paths != 0) "Missing ${nodeDir}/configuration.nix";
+        paths ++ findFilesInNodeRecursive nodeName "hardware-configuration.nix" ++ diskConfigFiles;
+      diskConfigFiles = findFilesInNodeRecursive nodeName "disk-config.nix";
       homeFiles = lib.zipAttrs (
         builtins.foldl' (
           paths:
@@ -770,14 +781,18 @@ let
           ) (builtins.readDir d)
         else
           [ ];
-      hasSshHostKey =
+      sshHostKey =
         let
-          paths = findFilesInNode nodeName "fs/etc/ssh/ssh_host_ed25519_key.pub";
+          paths = findFilesInNode nodeName "ssh_host_ed25519_key";
+          path = lib.elemAt paths 0;
           len = lib.length paths;
         in
-        assert lib.assertMsg (len <= 1)
-          "Mutiple ed25519 SSH host keys found:\n${map (path: "- ${path}\n") paths}";
-        len == 1;
+        assert lib.assertMsg (len <= 1) "Mutiple SSH host keys found:\n${map (path: "- ${path}\n") paths}";
+        if len == 0 then
+          ""
+        else
+          assert lib.assertMsg (lib.pathExists "${path}.pub") "Missing SSH host pubkey: ${path}";
+          path;
       secretsYamlFile =
         let
           paths = findFilesInNode nodeName "secrets.yaml";
@@ -793,7 +808,14 @@ let
     {
       type = "node";
       value = nodeValue;
-      inherit rawValue parentNames configuration;
+      dir = nodeDir;
+      inherit
+        rawValue
+        parentNames
+        configuration
+        sshHostKey
+        diskConfigFiles
+        ;
     };
   loadGroup =
     groupName:
@@ -860,14 +882,14 @@ let
         let
           inherit (entityObjs.${entityName}) parentNames;
         in
-        map (parentName: { inherit parentName entityName; }) parentNames
-        ++ lib.concatMap (
+        lib.concatMap (
           parentName:
           if lib.hasAttr parentName visited then
             [ ]
           else
             find parentName (visited // { ${entityName} = true; })
-        ) parentNames;
+        ) parentNames
+        ++ map (parentName: { inherit parentName entityName; }) parentNames;
     in
     find entityName { };
   normalizeEntityNames =
@@ -942,7 +964,6 @@ let
         groups = { };
       }
       entityNames;
-  nodeOptions = import ./nodeOptions.nix lib;
   importDirOrFile =
     base: name: default:
     (importDirAttrs base).${name} or default;

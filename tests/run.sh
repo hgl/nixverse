@@ -54,6 +54,7 @@ expectSuccess 'tests.lib.entities.commonLib-0.value.final' '{"lib":true,"libP":{
 expectSuccess 'tests.lib.entities.nodeLib-node.value.final' '{"lib":true,"libP":{"common":null,"node":{"lib":true,"libP":{"override":"node","top":{"lib":true,"libP":{"override":"top"}}}},"top":{"lib":true,"libP":{"override":"top"}}}}'
 expectSuccess 'tests.lib.entities.nodeLib-group-0.value.final' '{"lib":true,"libP":{"common":null,"node":{"lib":true,"libP":{"override":"node","top":{"lib":true,"libP":{"override":"top"}}}},"top":{"lib":true,"libP":{"override":"top"}}}}'
 expectSuccess 'tests.lib.entities.nodeCommonLib-0.value.final' '{"lib":true,"libP":{"common":{"lib":true,"libP":{"override":"common","top":{"lib":true,"libP":{"override":"top"}}}},"node":{"lib":true,"libP":{"override":"node","top":{"lib":true,"libP":{"override":"top"}}}},"top":{"lib":true,"libP":{"override":"top"}}}}'
+expectSuccess 'tests.lib.entities.overrideLib-node.value.final' '{"libP":{"override":"group"}}'
 
 expectSuccess 'tests.nodeArgs.entities.node.value.final' '{"common":true,"inputs":1,"nodes":{"current":"node"}}'
 expectSuccess 'tests.nodeArgs.entities.group-0.value.final' '{"common":true,"inputs":1,"nodes":{"current":"group-0"}}'
@@ -65,6 +66,8 @@ expectFailure 'tests.crossRef.entities.cross' 'circular group containment: cross
 expectFailure 'tests.groupEmpty.entities.group' "nodes/group/group.nix must contain at least one child"
 expectFailure 'tests.groupEmptyCommon.entities.group' "nodes/group/group.nix must contain at least one child"
 expectFailure 'tests.groupEmptyDeep.entities.group' "nodes/group2/group.nix must contain at least one child"
+expectFailure 'tests.disallowedNodeValue.entities.node.value.type' 'Must not specify "type" in nodes/node/node.nix'
+expectFailure 'tests.wrongNodeValue.entities.node.value.os' "A definition for option \`os' is not of type"
 
 expectSuccess 'tests.confPath.entities.node.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.confPath.entities.groupCommon-0.value.config.nixverse-test' '"bar"'
@@ -72,7 +75,9 @@ expectSuccess 'tests.confPath.entities.group-0.value.config.nixverse-test' '{"ba
 expectSuccess 'tests.hwconfPath.entities.node.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.hwconfPath.entities.groupCommon-0.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.hwconfPath.entities.group-0.value.config.nixverse-test' '{"bar":1,"bar2":1}'
+# shellcheck disable=2016
 expectSuccess 'lib.removePrefix "${tests.secretsPath.flakePath}/" tests.secretsPath.entities.node.value.config.sops.defaultSopsFile' '"nodes/node/secrets.yaml"'
+# shellcheck disable=2016
 expectSuccess 'lib.removePrefix "${tests.secretsPath.flakePath}/" tests.secretsPath.entities.group-0.value.config.sops.defaultSopsFile' '"nodes/group/group-0/secrets.yaml"'
 expectSuccess 'tests.home.entities.node.value.config.home-manager.users.foo.nixverse-test' '"bar"'
 expectSuccess 'tests.home.entities.groupCommon-0.value.config.home-manager.users.foo.nixverse-test' '"bar"'

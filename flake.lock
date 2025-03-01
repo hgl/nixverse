@@ -75,16 +75,17 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1734099322,
-        "narHash": "sha256-C1fNMbPY5SdDsZEWya7DwAHYpFzpRWdyiVdpsjLdb2g=",
+        "lastModified": 1740657886,
+        "narHash": "sha256-7kHxBQuzb7gcHzVmLGljJ4kF6BDDSYVCIxYFDmYPnAo=",
         "owner": "nix-community",
         "repo": "nixos-anywhere",
-        "rev": "f9d38cae32025a98fbba2cc3c3732cdd4829ea79",
+        "rev": "77e6a4e14baa93a29952ea9f0e4a59a29cca09e9",
         "type": "github"
       },
       "original": {
         "owner": "nix-community",
         "repo": "nixos-anywhere",
+        "rev": "77e6a4e14baa93a29952ea9f0e4a59a29cca09e9",
         "type": "github"
       }
     },
@@ -100,11 +101,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1734098258,
-        "narHash": "sha256-3mzGstXtPqt+zWzXqesgQ2haEI6LNCFhc/uU3Bcj6Ak=",
+        "lastModified": 1740452541,
+        "narHash": "sha256-aa5gPveHysMTVkxj+0iH0BdcSn8+v8lZPud+IItOSaQ=",
         "owner": "nix-community",
         "repo": "nixos-images",
-        "rev": "231f5f6370e78d04675c9fa8199be6c3b1b85773",
+        "rev": "283bbacb81bd2c1a7b89f33e011ecabe398a564e",
         "type": "github"
       },
       "original": {

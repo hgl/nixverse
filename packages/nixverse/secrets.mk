@@ -3,7 +3,6 @@ SHELL := bash
 .ONESHELL:
 .DELETE_ON_ERROR:
 
-ssh_host_key_types := ed25519 rsa
 private_dir := $(shell [[ -d private ]] && echo 'private/')
 
 .PHONY: all
@@ -11,17 +10,13 @@ private_dir := $(shell [[ -d private ]] && echo 'private/')
 ifdef node_names
   all: $(foreach name,$(node_names), \
     $(private_dir)$(node_$(name)_dir)/secrets.yaml \
-    $(foreach type,$(ssh_host_key_types), \
-      build/$(node_$(name)_dir)/fs/etc/ssh/ssh_host_$(type)_key \
-      $(private_dir)$(node_$(name)_dir)/ssh_host_$(type)_key \
-      $(private_dir)$(node_$(name)_dir)/fs/etc/ssh/ssh_host_$(type)_key.pub \
-    ) \
+    build/$(node_$(name)_dir)/ssh_host_ed25519_key \
+    $(private_dir)$(node_$(name)_dir)/ssh_host_ed25519_key \
+    $(private_dir)$(node_$(name)_dir)/ssh_host_ed25519_key.pub \
   )
   $(foreach name,$(node_names), \
     build/$(node_$(name)_dir) \
-    build/$(node_$(name)_dir)/fs/etc/ssh \
     $(private_dir)$(node_$(name)_dir) \
-    $(private_dir)$(node_$(name)_dir)/fs/etc/ssh \
   ):
 	mkdir -p $@
 endif
@@ -64,38 +59,34 @@ $(private_dir)nodes/%/secrets.yaml: build/secrets.yaml build/nodes/%/age.key bui
 		--output $@ \
 		--filename-override $(@F) \
 		$@.new
-build/nodes/%/age.key: build/nodes/%/fs/etc/ssh/ssh_host_ed25519_key
+build/nodes/%/age.key: build/nodes/%/ssh_host_ed25519_key
 	umask a=,u=rw
 	ssh-to-age -private-key -i $< -o $@
-build/nodes/%/age.pubkey: $(private_dir)nodes/%/fs/etc/ssh/ssh_host_ed25519_key.pub | build/nodes/%
+build/nodes/%/age.pubkey: $(private_dir)nodes/%/ssh_host_ed25519_key.pub | build/nodes/%
 	ssh-to-age -i $< -o $@
 
-define build_ssh_host_keys
-  $(private_dir)nodes/%/fs/etc/ssh/ssh_host_$(1)_key.pub: build/nodes/%/fs/etc/ssh/ssh_host_$(1)_key | $(private_dir)nodes/%/fs/etc/ssh
-  ifneq ($(private_dir),)
-	if [[ -e nodes/$$*/ssh_host_$(1)_key.pub ]] && [[ ! -e $$@ ]]; then
-  else
+$(private_dir)nodes/%/ssh_host_ed25519_key.pub: build/nodes/%/ssh_host_ed25519_key | $(private_dir)nodes/%
+ifneq ($(private_dir),)
+	if [[ -e nodes/$*/ssh_host_ed25519_key.pub ]] && [[ ! -e $@ ]]; then
+else
 	if false; then
-  endif
-		rm nodes/$$*/ssh_host_$(1)_key.pub
+endif
+		rm nodes/$*/ssh_host_ed25519_key.pub
 	fi
-	ssh-keygen -yf $$< >$$@
+	ssh-keygen -yf $< >$@
 
-  build/nodes/%/fs/etc/ssh/ssh_host_$(1)_key: $(private_dir)nodes/%/ssh_host_$(1)_key | build/nodes/%/fs/etc/ssh
+build/nodes/%/ssh_host_ed25519_key: $(private_dir)nodes/%/ssh_host_ed25519_key | build/nodes/%
 	umask a=,u=rw
-	sops decrypt --output $$@ $$<
+	sops decrypt --output $@ $<
 
-  $(private_dir)nodes/%/ssh_host_$(1)_key:
-  ifneq ($(private_dir),)
-	if [[ -e nodes/$$*/ssh_host_$(1)_key ]] && [[ ! -e $$@ ]]; then
-  else
+$(private_dir)nodes/%/ssh_host_ed25519_key:
+ifneq ($(private_dir),)
+	if [[ -e nodes/$*/ssh_host_ed25519_key ]] && [[ ! -e $@ ]]; then
+else
 	if false; then
-  endif
-		mv nodes/$$*/ssh_host_$(1)_key $$@
+endif
+		mv nodes/$*/ssh_host_ed25519_key $@
 	else
-		ssh-keygen -t $(1) -N '' -C '' -f $$@
-		sops --encrypt --output $$@ $$<
-		rm $$@.pub
+		ssh-keygen -t ed25519 -N '' -C '' -f $@
+		sops --encrypt --output $@ $<
 	fi
-endef
-$(foreach type,$(ssh_host_key_types),$(eval $(call build_ssh_host_keys,$(type))))

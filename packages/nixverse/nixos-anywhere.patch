@@ -1,0 +1,33 @@
+diff --git a/src/nixos-anywhere.sh b/src/nixos-anywhere.sh
+index e5d713e..ab56f07 100755
+--- a/src/nixos-anywhere.sh
++++ b/src/nixos-anywhere.sh
+@@ -11,6 +11,7 @@ enableDebug=""
+ nixBuildFlags=()
+ diskoScript=""
+ diskoMode="disko"
++partitionScript=""
+ nixosSystem=""
+ extraFiles=""
+ vmTest="n"
+@@ -253,6 +254,10 @@ parseArgs() {
+         ;;
+       esac
+ 
++      shift
++      ;;
++    --partition-script)
++      partitionScript=$2
+       shift
+       ;;
+     --build-on)
+@@ -844,6 +849,9 @@ main() {
+ 
+   if [[ ${phases[disko]} == 1 ]]; then
+     runDisko "$diskoScript"
++  elif [[ -n $partitionScript ]]; then
++    nixCopy --to "ssh://$sshConnection?$sshStoreSettings" "$partitionScript"
++    runSsh "$partitionScript"
+   fi
+ 
+   if [[ ${phases[install]} == 1 ]]; then
