@@ -66,11 +66,7 @@ build/nodes/%/age.pubkey: $(private_dir)nodes/%/ssh_host_ed25519_key.pub | build
 	ssh-to-age -i $< -o $@
 
 $(private_dir)nodes/%/ssh_host_ed25519_key.pub: build/nodes/%/ssh_host_ed25519_key | $(private_dir)nodes/%
-ifneq ($(private_dir),)
-	if [[ -e nodes/$*/ssh_host_ed25519_key.pub ]] && [[ ! -e $@ ]]; then
-else
-	if false; then
-endif
+	if $(if $(private_dir),[[ -e nodes/$*/ssh_host_ed25519_key.pub && ! -e $@ ]],false); then
 		rm nodes/$*/ssh_host_ed25519_key.pub
 	fi
 	ssh-keygen -yf $< >$@
@@ -79,14 +75,10 @@ build/nodes/%/ssh_host_ed25519_key: $(private_dir)nodes/%/ssh_host_ed25519_key |
 	umask a=,u=rw
 	sops decrypt --output $@ $<
 
-$(private_dir)nodes/%/ssh_host_ed25519_key:
-ifneq ($(private_dir),)
-	if [[ -e nodes/$*/ssh_host_ed25519_key ]] && [[ ! -e $@ ]]; then
-else
-	if false; then
-endif
+$(private_dir)nodes/%/ssh_host_ed25519_key: | $(private_dir)nodes/%
+	if $(if $(private_dir),[[ -e nodes/$*/ssh_host_ed25519_key && ! -e $@ ]],false); then
 		mv nodes/$*/ssh_host_ed25519_key $@
 	else
 		ssh-keygen -t ed25519 -N '' -C '' -f $@
-		sops --encrypt --output $@ $<
+		sops --encrypt --indent 2 --in-place $@
 	fi

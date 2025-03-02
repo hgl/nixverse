@@ -673,7 +673,7 @@ EOF
 
 	local entity_name=${wo_nodes%%/*}
 	local wo_entity_name=${wo_nodes#"$entity_name/"}
-	if [[ -z $wo_entity_name ]] || [[ $wo_entity_name = "$wo_nodes" ]]; then
+	if [[ -z $wo_entity_name || $wo_entity_name = "$wo_nodes" ]]; then
 		echo >&2 "Invalid secrets file"
 		popd >/dev/null
 		return 1
@@ -681,21 +681,12 @@ EOF
 
 	local valid=''
 	local node_name node_dir wo_node_name
-	if [[ -e private/nodes/$entity_name/node.nix ]] || [[ -e nodes/$entity_name/node.nix ]]; then
+	if [[ -e private/nodes/$entity_name/node.nix || -e nodes/$entity_name/node.nix ]]; then
 		valid=1
-		# local recipient=nodes/$entity_name/fs/etc/ssh/ssh_host_ed25519_key.pub
-		# if [[ -e private/$pubkey ]]; then
-		# 	pubkey=private/$pubkey
-		# elif [[ -e $pubkey ]]; then
-		# 	:
-		# else
-		# 	pubkey=${private_dir}$pubkey
-		# 	make_secrets "$pubkey"
-		# fi
 		node_name=$entity_name
 		node_dir=nodes/$node_name
 		wo_node_name=$wo_entity_name
-	elif [[ -e private/nodes/$entity_name/group.nix ]] || [[ -e nodes/$entity_name/group.nix ]]; then
+	elif [[ -e private/nodes/$entity_name/group.nix || -e nodes/$entity_name/group.nix ]]; then
 		valid=1
 		node_name=${wo_entity_name%%/*}
 		wo_node_name=${wo_entity_name#"$node_name/"}
@@ -766,7 +757,7 @@ EOF
 		esac
 		if [[ ! -e $key ]]; then
 			make -f - -f @out@/lib/nixverse/secrets.mk "$key" <<-EOF
-				node_names += $node_name
+				node_names := $node_name
 				node_${node_name}_dir := $node_dir
 			EOF
 		fi

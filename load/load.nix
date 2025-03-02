@@ -696,7 +696,13 @@ let
           }
           ++ lib.optional (sshHostKey != "") {
             imports = [ inputs.sops-nix.nixosModules.sops ];
-            services.openssh.hostKeys = [ ];
+            services.openssh.hostKeys = [
+              {
+                bits = 4096;
+                path = "/etc/ssh/ssh_host_rsa_key";
+                type = "rsa";
+              }
+            ];
             sops =
               {
                 age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
@@ -906,28 +912,22 @@ let
     entityNames:
     let
       find =
-        entityNames: visited:
-        lib.concatMap (
+        entityNames:
+        lib'.concatMapListToAttrs (
           entityName:
           let
             entity = final.entities.${entityName};
           in
-          if lib.hasAttr entityName visited then
-            [ ]
-          else
-            {
-              node = [ entityName ];
-              group = find entity.childNames (
-                visited
-                // {
-                  ${entityName} = true;
-                }
-              );
-            }
-            .${entity.type}
+          {
+            node = {
+              ${entityName} = true;
+            };
+            group = find entity.childNames;
+          }
+          .${entity.type}
         ) entityNames;
     in
-    find entityNames { };
+    lib.attrNames (find entityNames);
   segregateEntityNames =
     entityNames:
     builtins.foldl'
