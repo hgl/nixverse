@@ -31,7 +31,7 @@
     {
       lib = lib';
       load = import ./load {
-        inherit lib lib';
+        inherit lib lib' nixpkgs;
       };
       packages = lib'.forAllSystems (
         system:

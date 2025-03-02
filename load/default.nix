@@ -1,11 +1,17 @@
 {
   lib,
   lib',
+  nixpkgs,
 }:
 flake:
 let
   final = import ./load.nix {
-    inherit lib lib' flake;
+    inherit
+      lib
+      lib'
+      nixpkgs
+      flake
+      ;
   };
 in
 {

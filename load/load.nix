@@ -1,6 +1,7 @@
 {
   lib,
   lib',
+  nixpkgs,
   flake,
 }:
 let
@@ -29,7 +30,7 @@ let
       }
       .${entityObj.type}
     ) entityObjs;
-    nixverse = {
+    nixverse = flakeSrc: {
       inherit lib lib';
       nodesMakefileVars =
         let
@@ -78,14 +79,27 @@ let
             node = final.entities.${nodeName};
           in
           assert lib.assertMsg (
+            node.value.os == "darwin"
+          ) "Darwin node ${nodeName} doesn't need to be installed first, it's directly deployable.";
+          assert lib.assertMsg (
             node.value.install.targetHost != ""
           ) "Either install.targetHost or deploy.targetHost must not be empty for node ${nodeName}";
           {
-            name = nodeName;
-            command = "install_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.dir} ${toShellValue node.sshHostKey} ${
-              toShellValue (if node.diskConfigFiles != [ ] then "disko" else node.value.install.partitions.script)
-            } ${toShellValue node.value.install.buildOnRemote} ${toShellValue node.value.install.targetHost} ${
-              toString (map (opt: toShellValue opt) node.value.deploy.sshOpts)
+            n = nodeName;
+            c = "install_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir} ${lib.escapeShellArg node.sshHostKey} ${
+              lib.escapeShellArg (
+                if node.diskConfigFiles != [ ] then
+                  ""
+                else if node.value.install.partitions.script != "" then
+                  node.value.install.partitions.script
+                else
+                  import ./partitionScript.nix {
+                    inherit lib nodeName;
+                    config = node.value;
+                  }
+              )
+            } ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.value.install.targetHost} ${
+              toString (map (opt: lib.escapeShellArg opt) node.value.deploy.sshOpts)
             }";
           }
         ) nodeNames;
@@ -104,8 +118,8 @@ let
           else
             [
               {
-                name = nodeName;
-                command = "build_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.dir}";
+                n = nodeName;
+                c = "build_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir}";
               }
             ]
         ) nodeNames;
@@ -127,9 +141,9 @@ let
           assert lib.assertMsg (numNode != 1 -> node.value.deploy.targetHost != "")
             "Deploying multiple nodes where some of them are local is not allowed, deploy the local nodes individually.";
           {
-            name = nodeName;
-            command = "deploy_node ${toShellValue flake} ${toShellValue nodeName} ${toShellValue node.value.os} ${toShellValue node.value.deploy.targetHost} ${toShellValue node.value.deploy.buildHost} ${toShellValue node.value.deploy.buildHost} ${toShellValue node.value.deploy.useRemoteSudo} ${
-              toShellValue lib.concatMapStringsSep " " (opt: "-o ${toShellValue opt}") node.value.deploy.sshOpts
+            n = nodeName;
+            c = "deploy_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.value.os} ${lib.escapeShellArg node.value.deploy.targetHost} ${lib.escapeShellArg node.value.deploy.buildHost} ${lib.escapeShellArg node.value.deploy.buildHost} ${lib.escapeShellArg node.value.deploy.useRemoteSudo} ${
+              lib.escapeShellArg (map (opt: "-o ${lib.escapeShellArg opt}") node.value.deploy.sshOpts)
             }";
           }
         ) nodeNames;
@@ -155,7 +169,14 @@ let
           let
             node = final.entities.${nodeName};
           in
-          filterRecursive (_: v: !(lib.isFunction v)) (lib.removeAttrs node.value [ "config" ])
+          filterRecursive (_: v: !(lib.isFunction v)) (
+            lib.removeAttrs node.value [ "config" ]
+            // {
+              install = node.value.install // {
+                partitions = lib.removeAttrs node.value.partitions [ "script" ];
+              };
+            }
+          )
         ) nodes;
       getSecretsMakefileVars =
         entityNames:
@@ -362,15 +383,19 @@ let
       inherit (entityObjs.${nodeName}) rawValue parentNames;
       inherit (nodeValue) os channel;
       nodeDir = "nodes${lib.optionalString (rawValue == null) "/${lib.head parentNames}"}/${nodeName}";
+
       nodeValue =
         builtins.foldl' (accu: { value, ... }: lib.recursiveUpdate accu value) { } valueLocs
         // (lib.evalModules {
           modules =
             [
-              {
-                imports = [ ./nodeModule.nix ];
-                _module.check = false;
-              }
+              (
+                { config, ... }:
+                {
+                  imports = [ ./nodeModule.nix ];
+                  _module.check = false;
+                }
+              )
             ]
             ++ lib.imap0 (
               i:
@@ -669,28 +694,34 @@ let
                 lib,
                 ...
               }:
-              let
-                inherit (config.nixpkgs.hostPlatform) system;
-                pkgs' = lib.mapAttrs (name: v: pkgs.callPackage v { }) final.pkgs;
-              in
               {
+                imports = configurationFiles;
                 _module.args =
                   {
-                    inherit pkgs';
+                    pkgs' = lib.mapAttrs (name: v: pkgs.callPackage v { }) final.pkgs;
                   }
                   // lib.optionalAttrs (nodeValue.channel != "unstable" && flake.inputs ? nixpkgs-unstable) {
-                    pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
+                    pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform.system};
                   };
                 networking.hostName = lib.mkDefault nodes.current.name;
               }
             )
           ]
-          ++ lib.optional (nodeValue.parititions != null) {
+          ++
+            lib.optional
+              (
+                assert builtins.trace diskConfigFiles true;
+                diskConfigFiles != [ ]
+              )
+              {
+                imports = [ inputs.disko.nixosModules.disko ];
+              }
+          ++ lib.optional (diskConfigFiles == [ ] && nodeValue.install.partitions.script == "") {
             fileSystems."/" = {
               device = "/dev/disk/by-partlabel/root";
-              fsType = nodeValue.parititions.root.format;
+              fsType = nodeValue.install.partitions.root.format;
             };
-            swapDevices = lib.optional nodeValue.parititions.swap.enable {
+            swapDevices = lib.optional nodeValue.install.partitions.swap.enable {
               device = "/dev/disk/by-partlabel/swap";
             };
           }
@@ -711,35 +742,41 @@ let
                 defaultSopsFile = lib.mkDefault secretsYamlFile;
               };
           }
-          ++ lib.optional (homeFiles != { }) (
-            { pkgs', ... }:
-            {
-              imports = [
+          ++
+
+            lib.optional
+              (
+                assert builtins.trace homeFiles true;
+                homeFiles != { }
+              )
+              (
+                { pkgs', ... }:
                 {
-                  nixos = inputs.home-manager.nixosModules.home-manager;
-                  darwin = inputs.home-manager.darwinModules.home-manager;
+                  imports = [
+                    {
+                      nixos = inputs.home-manager.nixosModules.home-manager;
+                      darwin = inputs.home-manager.darwinModules.home-manager;
+                    }
+                    .${os}
+                  ];
+                  home-manager = {
+                    useGlobalPkgs = true;
+                    useUserPackages = true;
+                    extraSpecialArgs = {
+                      inherit
+                        lib'
+                        pkgs'
+                        inputs
+                        nodes
+                        ;
+                      modules' = final.homeManagerModules;
+                    };
+                    users = lib.mapAttrs (_: paths: {
+                      imports = paths;
+                    }) homeFiles;
+                  };
                 }
-                .${os}
-              ];
-              home-manager = {
-                useGlobalPkgs = true;
-                useUserPackages = true;
-                extraSpecialArgs = {
-                  inherit
-                    lib'
-                    pkgs'
-                    inputs
-                    nodes
-                    ;
-                  modules' = final.homeManagerModules;
-                };
-                users = lib.mapAttrs (_: paths: {
-                  imports = paths;
-                }) homeFiles;
-              };
-            }
-          )
-          ++ configurationFiles;
+              );
       };
       mkConfiguration =
         {
@@ -1023,11 +1060,5 @@ let
       map (subv: filterRecursive pred subv) v
     else
       v;
-  toShellValue =
-    v:
-    let
-      str = toString v;
-    in
-    if str == "" then "''" else lib.escapeShellArg str;
 in
 final

@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -159,23 +158,27 @@ func (m model) View() string {
 }
 
 func run() error {
-	var jobCmds []struct {
-		Name    string
-		Command string
+	numParallelJobs, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		return err
 	}
-	err := json.NewDecoder(os.Stdin).Decode(&jobCmds)
+
+	var jobCmds []struct {
+		Name    string `json:"n"`
+		Command string `json:"c"`
+	}
+	err = json.Unmarshal([]byte(os.Args[2]), &jobCmds)
 	if errors.Is(err, io.EOF) {
-		return errors.New("received empty json")
+		return errors.New("parallel: received empty json")
 	}
 	if err != nil {
 		return err
 	}
 	if len(jobCmds) == 0 {
-		return errors.New("no command to run")
+		return errors.New("parallel: no command to run")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
+	ctx := context.Background()
 
 	if len(jobCmds) == 1 {
 		cmd := exec.CommandContext(ctx, "bash", "-c", jobCmds[0].Command)
@@ -185,12 +188,8 @@ func run() error {
 		return cmd.Run()
 	}
 
-	numParallelJobs, err := strconv.Atoi(os.Args[1])
-	if err != nil {
-		return err
-	}
 	maxWidth := 0
-	jobs := make([]job, len(jobCmds))
+	jobs := make([]*job, len(jobCmds))
 	for i, jobCmd := range jobCmds {
 		f, err := os.CreateTemp("", "*")
 		if err != nil {
@@ -198,7 +197,7 @@ func run() error {
 		}
 		defer os.Remove(f.Name())
 		defer f.Close()
-		job := job{
+		job := &job{
 			name:      jobCmd.Name,
 			command:   jobCmd.Command,
 			nameWidth: ansi.StringWidth(jobCmd.Name),
@@ -209,19 +208,26 @@ func run() error {
 		}
 		jobs[i] = job
 	}
+
+	items := make([]list.Item, len(jobs))
+	for i, job := range jobs {
+		job.maxNameWidth = maxWidth
+		items[i] = list.Item(job)
+	}
+
 	var wg sync.WaitGroup
-	wg.Add(len(jobCmds))
+	wg.Add(len(jobs))
 	sem := semaphore.NewWeighted(int64(numParallelJobs))
 	ch := make(chan tea.Msg)
 	go func() {
-		for i, jobCmd := range jobCmds {
+		for i, job := range jobs {
 			err := sem.Acquire(ctx, 1)
 			if err != nil {
 				go func() { ch <- jobMetaErrorMsg{i, err} }()
 				continue
 			}
 
-			cmd := exec.CommandContext(ctx, "bash", "-c", jobCmd.Command)
+			cmd := exec.CommandContext(ctx, "bash", "-c", job.command)
 			pr, pw := io.Pipe()
 			cmd.Stdout = pw
 			cmd.Stderr = pw
@@ -244,7 +250,7 @@ func run() error {
 				}
 				ch <- jobSucceededMsg{i}
 			}()
-			r := io.TeeReader(pr, jobs[i].file)
+			r := io.TeeReader(pr, job.file)
 			scan := bufio.NewScanner(r)
 			go func() {
 				for scan.Scan() {
@@ -259,12 +265,6 @@ func run() error {
 		wg.Wait()
 		ch <- jobsSucceededMsg{}
 	}()
-
-	items := make([]list.Item, len(jobs))
-	for i, job := range jobs {
-		job.maxNameWidth = maxWidth
-		items[i] = list.Item(job)
-	}
 
 	l := list.New(items, itemDelegate{}, 0, 5)
 	l.KeyMap.CursorDown.SetKeys()
