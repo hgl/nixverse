@@ -584,10 +584,10 @@ let
           );
         in
         assert lib.assertMsg (lib.isAttrs v) "${loc} must evaluate to an attribute set";
-        assert lib.assertMsg (!(v ? type)) "Must not specify \"type\" in ${loc}";
-        assert lib.assertMsg (!(v ? name)) "Must not specify \"name\" in ${loc}";
-        assert lib.assertMsg (!(v ? parents)) "Must not specify \"parents\" in ${loc}";
-        assert lib.assertMsg (!(v ? config)) "Must not specify \"config\" in ${loc}";
+        assert lib.assertMsg (!(v ? type)) "Do not specify \"type\" in ${loc}";
+        assert lib.assertMsg (!(v ? name)) "Do not specify \"name\" in ${loc}";
+        assert lib.assertMsg (!(v ? parents)) "Do not specify \"parents\" in ${loc}";
+        assert lib.assertMsg (!(v ? config)) "Do not specify \"config\" in ${loc}";
         v;
       inputs =
         if channel == "unstable" then
