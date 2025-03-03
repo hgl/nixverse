@@ -168,7 +168,7 @@ let
           let
             node = final.entities.${nodeName};
           in
-          filterRecursive (_: v: !(lib.isFunction v)) (
+          recursiveFilter (_: v: !(lib.isFunction v)) (
             lib.removeAttrs node.value [ "config" ]
             // {
               install = node.value.install // {
@@ -774,11 +774,11 @@ let
         .${os};
       configurationFiles =
         let
-          paths = findFilesInNodeRecursive nodeName "configuration.nix";
+          paths = recursiveFindFilesInNode nodeName "configuration.nix";
         in
         assert lib.assertMsg (lib.length paths != 0) "Missing ${nodeDir}/configuration.nix";
-        paths ++ findFilesInNodeRecursive nodeName "hardware-configuration.nix" ++ diskConfigFiles;
-      diskConfigFiles = findFilesInNodeRecursive nodeName "disk-config.nix";
+        paths ++ recursiveFindFilesInNode nodeName "hardware-configuration.nix" ++ diskConfigFiles;
+      diskConfigFiles = recursiveFindFilesInNode nodeName "disk-config.nix";
       homeFiles = lib.zipAttrs (
         builtins.foldl' (
           paths:
@@ -879,7 +879,7 @@ let
       type = "group";
       inherit rawValue parentNames childNames;
     };
-  findFilesInNodeRecursive =
+  recursiveFindFilesInNode =
     nodeName: fileName:
     builtins.foldl' (
       paths:
@@ -1032,20 +1032,20 @@ let
       lib.concatStrings (map (part: if part == "" then "" else "/${part}") (lib.drop 1 parts))
     }";
   optionalPath = path: if lib.pathExists path then [ path ] else [ ];
-  filterRecursive =
+  recursiveFilter =
     pred: v:
     if lib.isAttrs v then
       lib.concatMapAttrs (
         name: subv:
         if pred name subv then
           {
-            ${name} = filterRecursive pred subv;
+            ${name} = recursiveFilter pred subv;
           }
         else
           { }
       ) v
     else if lib.isList v then
-      map (subv: filterRecursive pred subv) v
+      map (subv: recursiveFilter pred subv) v
     else
       v;
 in
