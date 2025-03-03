@@ -1,7 +1,6 @@
 {
   lib,
   lib',
-  nixpkgs,
   flake,
 }:
 let
@@ -707,15 +706,9 @@ let
               }
             )
           ]
-          ++
-            lib.optional
-              (
-                assert builtins.trace diskConfigFiles true;
-                diskConfigFiles != [ ]
-              )
-              {
-                imports = [ inputs.disko.nixosModules.disko ];
-              }
+          ++ lib.optional (diskConfigFiles != [ ]) {
+            imports = [ inputs.disko.nixosModules.disko ];
+          }
           ++ lib.optional (diskConfigFiles == [ ] && nodeValue.install.partitions.script == "") {
             fileSystems."/" = {
               device = "/dev/disk/by-partlabel/root";
@@ -744,39 +737,34 @@ let
           }
           ++
 
-            lib.optional
-              (
-                assert builtins.trace homeFiles true;
-                homeFiles != { }
-              )
-              (
-                { pkgs', ... }:
-                {
-                  imports = [
-                    {
-                      nixos = inputs.home-manager.nixosModules.home-manager;
-                      darwin = inputs.home-manager.darwinModules.home-manager;
-                    }
-                    .${os}
-                  ];
-                  home-manager = {
-                    useGlobalPkgs = true;
-                    useUserPackages = true;
-                    extraSpecialArgs = {
-                      inherit
-                        lib'
-                        pkgs'
-                        inputs
-                        nodes
-                        ;
-                      modules' = final.homeManagerModules;
-                    };
-                    users = lib.mapAttrs (_: paths: {
-                      imports = paths;
-                    }) homeFiles;
+            lib.optional (homeFiles != { }) (
+              { pkgs', ... }:
+              {
+                imports = [
+                  {
+                    nixos = inputs.home-manager.nixosModules.home-manager;
+                    darwin = inputs.home-manager.darwinModules.home-manager;
+                  }
+                  .${os}
+                ];
+                home-manager = {
+                  useGlobalPkgs = true;
+                  useUserPackages = true;
+                  extraSpecialArgs = {
+                    inherit
+                      lib'
+                      pkgs'
+                      inputs
+                      nodes
+                      ;
+                    modules' = final.homeManagerModules;
                   };
-                }
-              );
+                  users = lib.mapAttrs (_: paths: {
+                    imports = paths;
+                  }) homeFiles;
+                };
+              }
+            );
       };
       mkConfiguration =
         {

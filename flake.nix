@@ -18,7 +18,7 @@
       libArgs = {
         inherit lib lib';
       };
-      lib' = import ./lib.nix libArgs;
+      lib' = import ./lib libArgs;
       template = {
         path = ./template;
         description = "Nixverse template";
@@ -30,14 +30,14 @@
     in
     {
       lib = lib';
-      load = import ./load {
-        inherit lib lib' nixpkgs;
+      load = import ./pkgs/load {
+        inherit lib lib';
       };
       packages = lib'.forAllSystems (
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          nixverse = pkgs.callPackage (import ./packages/nixverse) {
+          nixverse = pkgs.callPackage (import ./pkgs/nixverse) {
             nixos-anywhere = self.inputs.nixos-anywhere.packages.${system}.nixos-anywhere;
             darwin-rebuild = self.inputs.nix-darwin.packages.${system}.darwin-rebuild;
           };
@@ -86,7 +86,7 @@
             lib'.mapListToAttrs (
               name:
               lib.nameValuePair name (
-                import ./load/load.nix {
+                import ./pkgs/load/load.nix {
                   inherit lib lib';
                   flake = {
                     outPath = ./tests/${name};
