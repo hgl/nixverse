@@ -39,10 +39,6 @@
       url = "github:hgl/nixverse";
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
-    # secrets = {
-    #   url = "/path-to-secrets";
-    #   flake = false;
-    # };
   };
 
   outputs =
