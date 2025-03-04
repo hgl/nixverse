@@ -590,31 +590,21 @@ let
         assert lib.assertMsg (!v ? parents) "Do not specify `parents` in ${loc}";
         assert lib.assertMsg (!v ? config) "Do not specify `config` in ${loc}";
         v;
-      inputs =
-        if channel == "unstable" then
-          lib.concatMapAttrs (
-            name: input:
-            if lib.hasSuffix "-unstable-${os}" name then
-              { ${lib.removeSuffix "-unstable-${os}" name} = input; }
-            else if lib.hasSuffix "-unstable" name then
-              { ${lib.removeSuffix "-unstable" name} = input; }
-            else
-              { }
-          ) flake.inputs
+      inputs = lib.concatMapAttrs (
+        name: input:
+        if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
+          { ${lib.removeSuffix "-${os}" name} = input; }
+        else if channel != "unstable" && lib.hasSuffix "-unstable" name then
+          { ${name} = input; }
+        else if lib.hasSuffix "-${channel}-${os}" name then
+          { ${lib.removeSuffix "-${channel}-${os}" name} = input; }
+        else if lib.hasSuffix "-${channel}" name then
+          { ${lib.removeSuffix "-${channel}" name} = input; }
+        else if lib.hasSuffix "-any" name then
+          { ${lib.removeSuffix "-any" name} = input; }
         else
-          lib.concatMapAttrs (
-            name: input:
-            if lib.hasSuffix "-unstable-${os}" name then
-              { ${lib.removeSuffix "-${os}" name} = input; }
-            else if lib.hasSuffix "-unstable" name then
-              { ${name} = input; }
-            else if lib.hasSuffix "-${channel}-${os}" name then
-              { ${lib.removeSuffix "-${channel}-${os}" name} = input; }
-            else if lib.hasSuffix "-${channel}-any" name then
-              { ${lib.removeSuffix "-${channel}-any" name} = input; }
-            else
-              { }
-          ) flake.inputs;
+          { }
+      ) flake.inputs;
       nodeLib =
         if rawValue != null then
           lib.recursiveUpdate parentsLib (loadLib "nodes/${nodeName}" { lib' = nodeLib; })
@@ -1059,7 +1049,9 @@ let
           { }
       ) v
     else if lib.isList v then
-      map (subv: recursiveFilter pred subv) v
+      lib.concatLists (
+        lib.imap0 (i: subv: if pred i subv then [ (recursiveFilter pred subv) ] else [ ]) v
+      )
     else
       v;
 in

@@ -55,7 +55,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
-          default = pkgs.mkShell {
+          default = pkgs.mkShellNoCC {
             packages =
               with pkgs;
               [
@@ -64,16 +64,12 @@
                 shfmt
                 shellcheck
                 nodePackages.bash-language-server
+                nodePackages.yaml-language-server
                 ssh-to-age
                 sops
                 yq
-                util-linux # for testing getopt
-                (writeShellScriptBin "run" ''
-                  for i in $(seq 1 $((1 + $RANDOM % 4))); do
-                    echo doing step $i
-                    sleep 0.$(($RANDOM % 999))
-                  done
-                '')
+                jq
+                util-linux # for experimenting with getopt
               ]
               ++ [ self.packages.${system}.nixverse ];
           };

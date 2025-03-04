@@ -113,7 +113,11 @@
         message = "Only one of `deploy.local` and `deploy.targetHost` can be specified";
       }
       {
-        assertion = !lib.elem config.channel [ "any" ];
+        assertion =
+          !lib.elem config.channel [
+            "any"
+            "ignore"
+          ];
         message = "`channel` must not be \"${config.channel}\", which is a reserved value";
       }
     ];
