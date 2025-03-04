@@ -169,7 +169,7 @@ let
           let
             node = final.entities.${nodeName};
           in
-          recursiveFilter (_: v: !(lib.isFunction v)) (
+          recursiveFilter (_: v: !lib.isFunction v) (
             lib.removeAttrs node.value [ "config" ]
             // {
               install = node.value.install // {
@@ -386,7 +386,7 @@ let
 
       nodeValue =
         builtins.foldl' (accu: { value, ... }: lib.recursiveUpdate accu value) { } valueLocs
-        // (lib.evalModules {
+        // (lib'.evalModulesAssertWarn {
           modules =
             [
               (
@@ -585,10 +585,10 @@ let
           );
         in
         assert lib.assertMsg (lib.isAttrs v) "${loc} must evaluate to an attribute set";
-        assert lib.assertMsg (!(v ? type)) "Do not specify \"type\" in ${loc}";
-        assert lib.assertMsg (!(v ? name)) "Do not specify \"name\" in ${loc}";
-        assert lib.assertMsg (!(v ? parents)) "Do not specify \"parents\" in ${loc}";
-        assert lib.assertMsg (!(v ? config)) "Do not specify \"config\" in ${loc}";
+        assert lib.assertMsg (!v ? type) "Do not specify `type` in ${loc}";
+        assert lib.assertMsg (!v ? name) "Do not specify `name` in ${loc}";
+        assert lib.assertMsg (!v ? parents) "Do not specify `parents` in ${loc}";
+        assert lib.assertMsg (!v ? config) "Do not specify `config` in ${loc}";
         v;
       inputs =
         if channel == "unstable" then
@@ -864,7 +864,7 @@ let
           let
             entityObj = entityObjs.${childName};
           in
-          assert lib.assertMsg (!(lib.hasAttr childName visited))
+          assert lib.assertMsg (!lib.hasAttr childName visited)
             "circular group containment: ${lib.concatStringsSep " > " (path ++ [ childName ])}";
           {
             node = false;
@@ -885,7 +885,7 @@ let
       inherit rawValue parentNames childNames;
     };
   nixverseConfig =
-    (lib.evalModules {
+    (lib'.evalModulesAssertWarn {
       modules = [
         {
           imports = [ ./flakeModule.nix ];

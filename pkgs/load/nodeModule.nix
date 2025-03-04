@@ -106,4 +106,16 @@
       default = { };
     };
   };
+  config = {
+    assertions = [
+      {
+        assertion = config.deploy.local == true -> config.deploy.targetHost == "";
+        message = "Only one of `deploy.local` and `deploy.targetHost` can be specified";
+      }
+      {
+        assertion = !lib.elem config.channel [ "any" ];
+        message = "`channel` must not be \"${config.channel}\", which is a reserved value";
+      }
+    ];
+  };
 }

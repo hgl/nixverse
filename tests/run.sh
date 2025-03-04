@@ -66,7 +66,10 @@ expectFailure 'tests.crossRef.entities.cross' 'circular group containment: cross
 expectFailure 'tests.groupEmpty.entities.group' "nodes/group/group.nix must contain at least one child"
 expectFailure 'tests.groupEmptyCommon.entities.group' "nodes/group/group.nix must contain at least one child"
 expectFailure 'tests.groupEmptyDeep.entities.group' "nodes/group2/group.nix must contain at least one child"
-expectFailure 'tests.disallowedNodeValue.entities.node.value.type' 'Must not specify "type" in nodes/node/node.nix'
+# shellcheck disable=2016
+expectFailure 'tests.disallowedNodeValueType.entities.node.value.type' 'Do not specify `type` in nodes/node/node.nix'
+# shellcheck disable=2016
+expectFailure 'tests.disallowedNodeValueChannel.entities.node.value.channel' '`channel` must not be "any"'
 expectFailure 'tests.wrongNodeValue.entities.node.value.os' "A definition for option \`os' is not of type"
 
 expectSuccess 'tests.confPath.entities.node.value.config.nixverse-test' '"bar"'

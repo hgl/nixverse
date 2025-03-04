@@ -82,12 +82,12 @@
       tests =
         let
           testLoad =
-            names: flake:
+            names: flake: outputs:
             lib'.mapListToAttrs (
               name:
               lib.nameValuePair name (
                 import ./pkgs/load/load.nix {
-                  inherit lib lib';
+                  inherit lib lib' outputs;
                   flake = {
                     outPath = ./tests/${name};
                   } // flake;
@@ -107,7 +107,8 @@
                 "groupEmpty"
                 "groupEmptyCommon"
                 "groupEmptyDeep"
-                "disallowedNodeValue"
+                "disallowedNodeValueType"
+                "disallowedNodeValueChannel"
                 "wrongNodeValue"
                 "confPath"
                 "hwconfPath"
@@ -119,12 +120,13 @@
                   nixpkgs-unstable = nixpkgs;
                 };
               }
+              { }
             // testLoad [ "secretsPath" ] {
               inputs = {
                 nixpkgs-unstable = nixpkgs;
                 sops-nix-unstable = builtins.getFlake "github:Mic92/sops-nix/07af005bb7d60c7f118d9d9f5530485da5d1e975";
               };
-            }
+            } { }
             // testLoad [ "nodeArgs" ] {
               inputs = {
                 nixpkgs-unstable = nixpkgs;
@@ -132,13 +134,13 @@
                   value = 1;
                 };
               };
-            }
+            } { }
             // testLoad [ "home" ] {
               inputs = {
                 nixpkgs-unstable = nixpkgs;
                 home-manager-unstable = builtins.getFlake "github:nix-community/home-manager/bd65bc3cde04c16755955630b344bc9e35272c56";
               };
-            };
+            } { };
         };
     };
 }
