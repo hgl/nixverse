@@ -386,26 +386,31 @@ let
 
       nodeValue =
         builtins.foldl' (accu: { value, ... }: lib.recursiveUpdate accu value) { } valueLocs
-        // (lib'.evalModulesAssertWarn {
-          modules =
-            [
-              (
-                { config, ... }:
+        // (
+          let
+            len = lib.length valueLocs;
+          in
+          lib'.evalModulesAssertWarn {
+            modules =
+              [
+                (
+                  { config, ... }:
+                  {
+                    imports = [ ./nodeModule.nix ];
+                    _module.check = false;
+                  }
+                )
+              ]
+              ++ lib.imap0 (
+                i:
+                { value, loc }:
                 {
-                  imports = [ ./nodeModule.nix ];
-                  _module.check = false;
+                  _file = loc;
+                  config = lib.mkOverride (1000 + len - 1 - i) value;
                 }
-              )
-            ]
-            ++ lib.imap0 (
-              i:
-              { value, loc }:
-              {
-                _file = loc;
-                config = lib.mkOverride (1000 + i) value;
-              }
-            ) valueLocs;
-        }).config
+              ) valueLocs;
+          }
+        ).config
         // {
           type = "node";
           name = nodeName;
