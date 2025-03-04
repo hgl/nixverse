@@ -5,10 +5,14 @@
 flake: outputs:
 let
   final = import ./load.nix {
-    inherit lib lib' flake;
+    inherit
+      lib
+      lib'
+      flake
+      outputs
+      ;
   };
 in
-assert lib.assertMsg (!(outputs ? nixverse)) "Do not specify flake output \"nixverse\".";
 lib.recursiveUpdate {
   inherit (final)
     nixosModules
@@ -16,7 +20,6 @@ lib.recursiveUpdate {
     homeManagerModules
     nixosConfigurations
     darwinConfigurations
-    nixverse
     ;
   packages = lib'.forAllSystems (
     system:
@@ -26,3 +29,6 @@ lib.recursiveUpdate {
     lib.mapAttrs (_: v: pkgs.callPackage v { }) final.pkgs
   );
 } outputs
+// {
+  inherit (final) nixverse;
+}

@@ -2,6 +2,7 @@
   lib,
   lib',
   flake,
+  outputs,
 }:
 let
   publicDir = flake.outPath;
@@ -630,7 +631,11 @@ let
         in
         childLib
       ) topLib (findAncestorNames nodeName);
-      topLib = loadLib "" { lib' = topLib; };
+      topLib =
+        let
+          v = loadLib "" { lib' = topLib; };
+        in
+        if nixverseConfig.inheritLib then lib.recursiveUpdate lib' v else v;
       loadLib =
         subdir: extraArgs:
         let
@@ -879,6 +884,15 @@ let
       type = "group";
       inherit rawValue parentNames childNames;
     };
+  nixverseConfig =
+    (lib.evalModules {
+      modules = [
+        {
+          imports = [ ./flakeModule.nix ];
+          config = outputs.nixverse or { };
+        }
+      ];
+    }).config;
   recursiveFindFilesInNode =
     nodeName: fileName:
     builtins.foldl' (
