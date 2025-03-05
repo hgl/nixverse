@@ -27,12 +27,12 @@ cmd_help_node() {
 		cat <<EOF
 Usage: nixverse node <command> [<argument>...]
 
-Manage nodes
+Manage nodes.
 
 Commands:
   install      install NixOS to nodes
   deploy       manage nodes
-  value        print value specified in node.nix or group.nix
+  value        show nodes or groups' meta configurations
 
 Use "nixverse node <command> --help" for more information about a command.
 EOF
@@ -45,7 +45,7 @@ cmd_help_node_install() {
 	cat <<EOF
 Usage: nixverse node install [<option>...] <node>...
 
-Install one or more nodes
+Install one or more nodes.
 
 Options:
   -p, --parallel <num>      number of nodes to install in parallel (default: 10)
@@ -57,11 +57,22 @@ cmd_help_node_deploy() {
 	cat <<EOF
 Usage: nixverse node deploy [<option>...] <node>...
 
-Deploy one or more nodes
+Deploy one or more nodes.
 
 Options:
   -p, --parallel <num>      number of nodes to deploy in parallel (default: 10)
   -h, --help                show this help
+EOF
+}
+
+cmd_help_node_value() {
+	cat <<EOF
+Usage: nixverse node value [<option>...] <node>...
+
+Show nodes or groups' meta configurations.
+
+Options:
+  -h, --help    show this help
 EOF
 }
 
@@ -128,7 +139,7 @@ cmd_help_help() {
 	cat <<EOF
 Usage: nixverse help <command>
 
-Show help for the command
+Show help for the command.
 EOF
 }
 
