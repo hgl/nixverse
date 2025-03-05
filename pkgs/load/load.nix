@@ -15,9 +15,9 @@ let
     darwinModules =
       importDirAttrs "${publicDir}/modules/darwin"
       // importDirAttrs "${privateDir}/modules/darwin";
-    homeManagerModules =
-      importDirAttrs "${publicDir}/modules/homeManager"
-      // importDirAttrs "${privateDir}/modules/homeManager";
+    homeModules =
+      importDirAttrs "${publicDir}/modules/home"
+      // importDirAttrs "${privateDir}/modules/home";
     nixosConfigurations = loadConfigurations "nixos";
     darwinConfigurations = loadConfigurations "darwin";
     # Expose for tests
