@@ -830,7 +830,7 @@ run_make() {
 	local flake=$1
 	shift
 
-	if [[ ! -e $flake/Makefile ]]; then
+	if [[ ! -e $flake/Makefile ]] && [[ ! -e $flake/private/Makefile ]]; then
 		return
 	fi
 
@@ -844,7 +844,8 @@ run_make() {
 	# shellcheck disable=SC2086
 	make -j $((nproc + 1)) -C "$flake" -f - $targets <<-EOF
 		$mk
-		include Makefile
+		-include Makefile
+		-include private/Makefile
 	EOF
 }
 
