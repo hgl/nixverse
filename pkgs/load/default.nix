@@ -1,6 +1,7 @@
 {
   lib,
   lib',
+  self,
 }:
 flake: outputs:
 let
@@ -8,6 +9,7 @@ let
     inherit
       lib
       lib'
+      self
       flake
       outputs
       ;

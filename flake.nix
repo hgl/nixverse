@@ -31,7 +31,7 @@
     {
       lib = lib';
       load = import ./pkgs/load {
-        inherit lib lib';
+        inherit lib lib' self;
       };
       packages = lib'.forAllSystems (
         system:
@@ -47,8 +47,10 @@
           default = nixverse;
         }
       );
-      templates.nixverse = template;
-      templates.default = template;
+      templates = {
+        nixverse = template;
+        default = template;
+      };
       devShells = lib'.forAllSystems (
         system:
         let
@@ -83,7 +85,12 @@
               name:
               lib.nameValuePair name (
                 import ./pkgs/load/load.nix {
-                  inherit lib lib' outputs;
+                  inherit
+                    lib
+                    lib'
+                    self
+                    outputs
+                    ;
                   flake = {
                     outPath = ./tests/${name};
                   } // flake;

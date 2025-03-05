@@ -1,6 +1,7 @@
 {
   lib,
   lib',
+  self,
   flake,
   outputs,
 }:
@@ -697,12 +698,19 @@ let
                 imports = configurationFiles;
                 _module.args =
                   let
+                    inherit (config.nixpkgs.hostPlatform) system;
                     optionalPkgsUnstableAttr =
                       lib.optionalAttrs (nodeValue.channel != "unstable" && flake.inputs ? nixpkgs-unstable)
                         {
-                          pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform.system};
+                          pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
                         };
-                    callPackage = pkgs.newScope (optionalPkgsUnstableAttr // { inherit pkgs'; });
+                    callPackage = pkgs.newScope (
+                      optionalPkgsUnstableAttr
+                      // {
+                        inherit pkgs';
+                        inherit (self.packages.${system}) nixverse;
+                      }
+                    );
                     pkgs' = lib.mapAttrs (name: v: callPackage v { }) final.pkgs;
                   in
                   { inherit pkgs'; } // optionalPkgsUnstableAttr;
