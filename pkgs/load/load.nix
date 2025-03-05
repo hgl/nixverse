@@ -696,12 +696,16 @@ let
               {
                 imports = configurationFiles;
                 _module.args =
-                  {
-                    pkgs' = lib.mapAttrs (name: v: pkgs.callPackage v { }) final.pkgs;
-                  }
-                  // lib.optionalAttrs (nodeValue.channel != "unstable" && flake.inputs ? nixpkgs-unstable) {
-                    pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform.system};
-                  };
+                  let
+                    optionalPkgsUnstableAttr =
+                      lib.optionalAttrs (nodeValue.channel != "unstable" && flake.inputs ? nixpkgs-unstable)
+                        {
+                          pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${config.nixpkgs.hostPlatform.system};
+                        };
+                    callPackage = pkgs.newScope (optionalPkgsUnstableAttr // { inherit pkgs'; });
+                    pkgs' = lib.mapAttrs (name: v: callPackage v { }) final.pkgs;
+                  in
+                  { inherit pkgs'; } // optionalPkgsUnstableAttr;
                 networking.hostName = lib.mkDefault nodes.current.name;
               }
             )
