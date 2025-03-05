@@ -66,6 +66,7 @@
                   type = lib.types.nullOr lib.types.path;
                   default = null;
                 };
+                # TODO: add boot.size
                 boot.type = lib.mkOption {
                   type = lib.types.enum [
                     null
@@ -89,6 +90,7 @@
                     default = true;
                   };
                   size = lib.mkOption {
+                    # TODO: disallow invalid values
                     type = lib.types.str;
                     default = "";
                   };
