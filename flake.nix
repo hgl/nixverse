@@ -39,7 +39,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           nixverse = pkgs.callPackage (import ./pkgs/nixverse) {
             nixos-anywhere = self.inputs.nixos-anywhere.packages.${system}.nixos-anywhere;
-            darwin-rebuild = self.inputs.nix-darwin.packages.${system}.darwin-rebuild;
+            darwin-rebuild = self.inputs.nix-darwin.packages.${system}.darwin-rebuild or null;
           };
         in
         {
