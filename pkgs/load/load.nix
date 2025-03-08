@@ -721,7 +721,7 @@ let
           ++ lib.optional (diskConfigFiles != [ ]) {
             imports = [ inputs.disko.nixosModules.disko ];
           }
-          ++ lib.optional (diskConfigFiles == [ ] && nodeValue.install.partitions.script == "") {
+          ++ lib.optional (os == "nixos" && diskConfigFiles == [ ] && nodeValue.install.partitions.script == "") {
             fileSystems."/" = {
               device = "/dev/disk/by-partlabel/root";
               fsType = nodeValue.install.partitions.root.format;
