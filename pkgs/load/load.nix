@@ -80,7 +80,7 @@ let
             node = final.entities.${nodeName};
           in
           assert lib.assertMsg (
-            node.value.os == "darwin"
+            node.value.os != "darwin"
           ) "Darwin node ${nodeName} doesn't need to be installed first, it's directly deployable.";
           assert lib.assertMsg (
             node.value.install.targetHost != ""
@@ -721,15 +721,17 @@ let
           ++ lib.optional (diskConfigFiles != [ ]) {
             imports = [ inputs.disko.nixosModules.disko ];
           }
-          ++ lib.optional (os == "nixos" && diskConfigFiles == [ ] && nodeValue.install.partitions.script == "") {
-            fileSystems."/" = {
-              device = "/dev/disk/by-partlabel/root";
-              fsType = nodeValue.install.partitions.root.format;
-            };
-            swapDevices = lib.optional nodeValue.install.partitions.swap.enable {
-              device = "/dev/disk/by-partlabel/swap";
-            };
-          }
+          ++
+            lib.optional (os == "nixos" && diskConfigFiles == [ ] && nodeValue.install.partitions.script == "")
+              {
+                fileSystems."/" = {
+                  device = "/dev/disk/by-partlabel/root";
+                  fsType = nodeValue.install.partitions.root.format;
+                };
+                swapDevices = lib.optional nodeValue.install.partitions.swap.enable {
+                  device = "/dev/disk/by-partlabel/swap";
+                };
+              }
           ++ lib.optional (sshHostKey != "") {
             imports = [ inputs.sops-nix.nixosModules.sops ];
             services.openssh.hostKeys = [

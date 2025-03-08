@@ -193,7 +193,7 @@ cmd_node_install() {
 }
 
 install_node() {
-	set -euo pipefail
+	set -xeuo pipefail
 
 	local flake=$1
 	local node_name=$2
@@ -203,8 +203,10 @@ install_node() {
 	local partition_script=$5
 	local build_on_remote=$6
 	local target_host=$7
+	shift 7
 
 	local args=()
+	local sshOpt
 	for sshOpt; do
 		args+=(-o "$sshOpt")
 	done
