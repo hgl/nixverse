@@ -120,7 +120,7 @@ let
             [
               {
                 n = nodeName;
-                c = "build_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir}";
+                c = "build_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.value.os}";
               }
             ]
         ) nodeNames;
