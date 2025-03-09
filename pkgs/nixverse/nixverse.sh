@@ -193,7 +193,7 @@ cmd_node_install() {
 }
 
 install_node() {
-	set -xeuo pipefail
+	set -euo pipefail
 
 	local flake=$1
 	local node_name=$2
