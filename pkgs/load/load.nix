@@ -394,13 +394,10 @@ let
           lib'.evalModulesAssertWarn {
             modules =
               [
-                (
-                  { config, ... }:
-                  {
-                    imports = [ ./nodeModule.nix ];
-                    _module.check = false;
-                  }
-                )
+                {
+                  imports = [ ./nodeModule.nix ];
+                  _module.check = false;
+                }
               ]
               ++ lib.imap0 (
                 i:
