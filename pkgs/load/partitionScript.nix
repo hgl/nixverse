@@ -46,7 +46,7 @@ assert lib.assertMsg (
     --zap-all \
     --new 0:0:${
       {
-        efi = "+100M";
+        efi = "+512M";
         bios = "+1M";
       }
       .${cfg.boot.type}
