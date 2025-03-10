@@ -383,7 +383,8 @@ let
     let
       inherit (entityObjs.${nodeName}) rawValue parentNames;
       inherit (nodeValue) os channel;
-      nodeDir = "nodes${lib.optionalString (rawValue == null) "/${lib.head parentNames}"}/${nodeName}";
+      definedByGroup = rawValue == null;
+      nodeDir = "nodes${lib.optionalString definedByGroup "/${lib.head parentNames}"}/${nodeName}";
 
       nodeValue =
         builtins.foldl' (accu: { value, ... }: lib.recursiveUpdate accu value) { } valueLocs
@@ -530,7 +531,7 @@ let
               (findAncestorNames nodeName);
         in
         merged.values
-        ++ lib.optionals (rawValue != null) (
+        ++ lib.optionals (!definedByGroup) (
           let
             nodePublic =
               if rawValue ? public then
@@ -609,10 +610,10 @@ let
           { }
       ) flake.inputs;
       nodeLib =
-        if rawValue != null then
-          lib.recursiveUpdate parentsLib (loadLib "nodes/${nodeName}" { lib' = nodeLib; })
+        if definedByGroup then
+          parentsLib
         else
-          parentsLib;
+          lib.recursiveUpdate parentsLib (loadLib "nodes/${nodeName}" { lib' = nodeLib; });
       parentsLib = builtins.foldl' (
         accu:
         { parentName, entityName }:
@@ -800,7 +801,7 @@ let
           ++ findHomeFiles "${publicDir}/nodes/${parentName}/${entityName}"
           ++ findHomeFiles "${privateDir}/nodes/${parentName}/${entityName}"
         ) [ ] (findAncestorNames nodeName)
-        ++ lib.optionals (rawValue != null) (
+        ++ lib.optionals (!definedByGroup) (
           findHomeFiles "${publicDir}/nodes/${nodeName}" ++ findHomeFiles "${privateDir}/nodes/${nodeName}"
         )
       );
