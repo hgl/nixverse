@@ -771,7 +771,7 @@ let
                       inputs
                       nodes
                       ;
-                    modules' = final.homeManagerModules;
+                    modules' = final.homeModules;
                   };
                   users = lib.mapAttrs (_: paths: {
                     imports = paths;
