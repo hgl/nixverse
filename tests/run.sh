@@ -76,6 +76,7 @@ expectFailure 'tests.wrongNodeValue.entities.node.value.os' "A definition for op
 expectSuccess 'tests.confPath.entities.node.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.confPath.entities.groupCommon-0.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.confPath.entities.group-0.value.config.nixverse-test' '{"bar":1,"bar2":1}'
+expectSuccess 'tests.confPath.entities.doubleLayer-node.value.config.nixverse-test' '{"group":1,"node":1}'
 expectSuccess 'tests.hwconfPath.entities.node.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.hwconfPath.entities.groupCommon-0.value.config.nixverse-test' '"bar"'
 expectSuccess 'tests.hwconfPath.entities.group-0.value.config.nixverse-test' '{"bar":1,"bar2":1}'
