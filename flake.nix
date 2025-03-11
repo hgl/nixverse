@@ -45,6 +45,7 @@
         {
           inherit nixverse;
           default = nixverse;
+          mkShellMinimal = pkgs.callPackage (import ./pkgs/mkShellMinimal.nix) { };
         }
       );
       templates = {
@@ -55,25 +56,24 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          pkgs' = self.packages.${system};
         in
         {
-          default = pkgs.mkShellNoCC {
-            packages =
-              with pkgs;
-              [
-                nil
-                nixfmt-rfc-style
-                shfmt
-                shellcheck
-                nodePackages.bash-language-server
-                nodePackages.yaml-language-server
-                ssh-to-age
-                sops
-                yq
-                jq
-                util-linux # for experimenting with getopt
-              ]
-              ++ [ self.packages.${system}.nixverse ];
+          default = pkgs'.mkShellMinimal {
+            packages = with pkgs; [
+              nil
+              nixfmt-rfc-style
+              shfmt
+              shellcheck
+              nodePackages.bash-language-server
+              nodePackages.yaml-language-server
+              ssh-to-age
+              sops
+              yq
+              jq
+              util-linux # for experimenting with getopt
+              pkgs'.nixverse
+            ];
           };
         }
       );
