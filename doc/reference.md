@@ -60,9 +60,6 @@ To integrate Nixverse into an existing `flake.nix`, update it as follows:
     };
   };
   outputs = { self, nixverse, ... }: nixverse.load self {
-    nixverse = {
-      inheritLib = true;
-    };
     # Include your custom flake outputs here
   };
 }
@@ -84,7 +81,11 @@ The `nixverse` output can be specified to configurate Nixverse. It's an attribut
 - `inheritLib`
   - Determines whether the `lib'` argument (see [Defining Custom Lib Functions](#defining-custom-lib-functions)) also contains functions from input `nixverse.lib`.
   - **Type**: boolean
-  - **Default**: `false`
+  - **Default**: `true`
+- `inheritPkgs`
+  - Determines whether the `pkgs'` argument (see [Defining Custom Packages](#defining-custom-packages)) also contains functions from input `nixverse.packages`.
+  - **Type**: boolean
+  - **Default**: `true`
 
 ## Defining Nodes
 
@@ -566,6 +567,8 @@ You can specify the package names as the function's arguments, plus:
 
 - `pkgs-unstable`: exists only if the node accessing the `pkgs'` argument uses a channel not equal to `"unstable"` and a `nixpkgs-unstable` input exists. It provides unstable nixpkgs packages.
 - `pkgs'`: contains custom packages.
+
+The `pkgs'` argument by default only contains packages defined by you, but if the `inheritPkgs` [Nixverse option](#nixverse-options) is `true`, it also contains [Nixverse's packages](../pkgs).
 
 ```nix
 # pkgs/greet.nix

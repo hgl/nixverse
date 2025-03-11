@@ -30,7 +30,7 @@
     in
     {
       lib = lib';
-      load = import ./pkgs/load {
+      load = import ./load {
         inherit lib lib' self;
       };
       packages = lib'.forAllSystems (
@@ -84,7 +84,7 @@
             lib'.mapListToAttrs (
               name:
               lib.nameValuePair name (
-                import ./pkgs/load/load.nix {
+                import ./load/load.nix {
                   inherit
                     lib
                     lib'

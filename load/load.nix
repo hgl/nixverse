@@ -8,8 +8,21 @@
 let
   publicDir = flake.outPath;
   privateDir = "${publicDir}/private";
+  rawPkgs = importDirAttrs "${publicDir}/pkgs" // importDirAttrs "${privateDir}/pkgs";
   final = {
-    pkgs = importDirAttrs "${publicDir}/pkgs" // importDirAttrs "${privateDir}/pkgs";
+    packages = lib'.forAllSystems (
+      system:
+      let
+        pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
+        callPackage = pkgs.newScope {
+          inherit pkgs';
+        };
+        pkgs' =
+          lib.optionalAttrs (nixverseConfig.inheritPkgs) self.packages.${system}
+          // lib.mapAttrs (_: v: callPackage v { }) rawPkgs;
+      in
+      pkgs'
+    );
     nixosModules =
       importDirAttrs "${publicDir}/modules/nixos"
       // importDirAttrs "${privateDir}/modules/nixos";
@@ -340,7 +353,7 @@ let
               publicExist = true;
               privateExist = true;
             }
-          else if lib.hasAttr entityName typesPublic then
+          else if typesPublic ? ${entityName} then
             {
               type = first;
               publicExist = true;
@@ -697,19 +710,19 @@ let
                 _module.args =
                   let
                     inherit (config.nixpkgs.hostPlatform) system;
-                    optionalPkgsUnstableAttr =
-                      lib.optionalAttrs (nodeValue.channel != "unstable" && flake.inputs ? nixpkgs-unstable)
-                        {
-                          pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
-                        };
+                    optionalPkgsUnstableAttr = lib.optionalAttrs (nodeValue.channel != "unstable") {
+                      pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
+                    };
                     callPackage = pkgs.newScope (
                       optionalPkgsUnstableAttr
                       // {
                         inherit pkgs';
-                        inherit (self.packages.${system}) nixverse;
                       }
                     );
-                    pkgs' = lib.mapAttrs (name: v: callPackage v { }) final.pkgs;
+                    # TODO: support node-level packages
+                    pkgs' =
+                      lib.optionalAttrs (nixverseConfig.inheritPkgs) self.packages.${system}
+                      // lib.mapAttrs (_: v: callPackage v { }) rawPkgs;
                   in
                   { inherit pkgs'; } // optionalPkgsUnstableAttr;
                 networking.hostName = lib.mkDefault nodes.current.name;
