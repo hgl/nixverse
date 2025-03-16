@@ -184,8 +184,11 @@ let
             node = final.entities.${nodeName};
           in
           recursiveFilter (_: v: !lib.isFunction v) (
-            lib.removeAttrs node.value [ "config" ]
-            // {
+            lib.removeAttrs node.value [
+              "config"
+              "install"
+            ]
+            // lib.optionalAttrs (node.diskConfigFiles == [ ]) {
               install = node.value.install // {
                 partitions = lib.removeAttrs node.value.partitions [ "script" ];
               };
