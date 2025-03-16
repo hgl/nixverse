@@ -149,7 +149,7 @@ cmd_node() {
 
 cmd_node_install() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long '--help,--parallel:' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
 	eval set -- "$args"
 	unset args
 
@@ -240,7 +240,7 @@ export -f install_node
 
 cmd_node_build() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long '--help,--parallel:' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
 	eval set -- "$args"
 	unset args
 
@@ -307,7 +307,7 @@ export -f build_node
 
 cmd_node_deploy() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long '--help,--parallel:' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
 	eval set -- "$args"
 	unset args
 
@@ -394,7 +394,7 @@ export -f deploy_node
 
 cmd_node_value() {
 	local args
-	args=$(getopt -n nixverse -o 'h' --long '--help' -- "$@")
+	args=$(getopt -n nixverse -o 'h' --long 'help' -- "$@")
 	eval set -- "$args"
 	unset args
 
@@ -436,7 +436,7 @@ cmd_secrets() {
 	encrypt | decrypt)
 		shift
 		local args
-		args=$(getopt -n nixverse -o 'hif' --long '--help,--in-place,--force' -- "$@")
+		args=$(getopt -n nixverse -o 'hif' --long 'help,in-place,force' -- "$@")
 		eval set -- "$args"
 		unset args
 
@@ -500,7 +500,7 @@ cmd_secrets() {
 	edit)
 		shift
 		local args
-		args=$(getopt -n nixverse -o 'h' --long '--help' -- "$@")
+		args=$(getopt -n nixverse -o 'h' --long 'help' -- "$@")
 		eval set -- "$args"
 		unset args
 
@@ -858,7 +858,7 @@ cmd() {
 		*)
 			shift
 			local args
-			args=$(getopt -n nixverse -o '+h' --long '--help' -- "$@")
+			args=$(getopt -n nixverse -o '+h' --long 'help' -- "$@")
 			eval set -- "$args"
 			unset args
 
@@ -897,7 +897,7 @@ cmd() {
 			shift
 
 			local args
-			args=$(getopt -n nixverse -o '+h' --long '--help' -- "$@")
+			args=$(getopt -n nixverse -o '+h' --long 'help' -- "$@")
 			eval set -- "$args"
 			unset args
 
