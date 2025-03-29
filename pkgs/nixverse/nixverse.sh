@@ -576,6 +576,8 @@ cmd_secrets() {
 				mv secrets.yaml "$f"
 			fi
 			sops_target_file=$f
+			path=$f
+			path_is_output=''
 		else
 			f=$(realpath --no-symlinks --relative-base "$flake" "$f")
 			if [[ $f = /* ]]; then
