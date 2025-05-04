@@ -86,8 +86,8 @@
                 };
                 swap = {
                   enable = lib.mkOption {
-                    type = lib.types.bool;
-                    default = true;
+                    type = lib.types.nullOr lib.types.bool;
+                    default = null;
                   };
                   size = lib.mkOption {
                     # TODO: disallow invalid values

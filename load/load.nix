@@ -736,16 +736,26 @@ let
             imports = [ inputs.disko.nixosModules.disko ];
           }
           ++
-            lib.optional (os == "nixos" && diskConfigFiles == [ ] && nodeValue.install.partitions.script == "")
-              {
-                fileSystems."/" = {
-                  device = "/dev/disk/by-partlabel/root";
-                  fsType = nodeValue.install.partitions.root.format;
-                };
-                swapDevices = lib.optional nodeValue.install.partitions.swap.enable {
-                  device = "/dev/disk/by-partlabel/swap";
-                };
-              }
+            lib.optional
+              (
+                os == "nixos"
+                && diskConfigFiles == [ ]
+                && nodeValue.install.partitions.device != null
+                && nodeValue.install.partitions.script == ""
+              )
+              (
+                lib.optionalAttrs (nodeValue.install.partitions.root.format != null) {
+                  fileSystems."/" = lib.mkDefault {
+                    device = "/dev/disk/by-partlabel/root";
+                    fsType = nodeValue.install.partitions.root.format;
+                  };
+                }
+                // lib.optionalAttrs (nodeValue.install.partitions.swap.enable != null) {
+                  swapDevices = lib.optional nodeValue.install.partitions.swap.enable {
+                    device = "/dev/disk/by-partlabel/swap";
+                  };
+                }
+              )
           ++ lib.optional (sshHostKey != "") {
             imports = [ inputs.sops-nix.nixosModules.sops ];
             services.openssh.hostKeys = [
@@ -776,8 +786,8 @@ let
                   .${os}
                 ];
                 home-manager = {
-                  useGlobalPkgs = true;
-                  useUserPackages = true;
+                  useGlobalPkgs = lib.mkDefault true;
+                  useUserPackages = lib.mkDefault true;
                   extraSpecialArgs = {
                     inherit
                       lib'

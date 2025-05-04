@@ -7,14 +7,17 @@ let
   cfg = config.install.partitions;
 in
 assert lib.assertMsg (
-  config.install.partitions.device != null
+  cfg.device != null
 ) "install.partitions.device must be specified for node ${nodeName}";
 assert lib.assertMsg (
-  config.install.partitions.boot.type != null
+  cfg.boot.type != null
 ) "install.partitions.boot.type must be specified for node ${nodeName}";
 assert lib.assertMsg (
-  config.install.partitions.root.format != null
+  cfg.root.format != null
 ) "install.partitions.root.format must be specified for node ${nodeName}";
+assert lib.assertMsg (
+  cfg.swap.enable != null
+) "install.partitions.swap.enable must be specified for node ${nodeName}";
 ''
   set -euo pipefail
 

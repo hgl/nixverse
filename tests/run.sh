@@ -48,6 +48,7 @@ expectSuccess 'tests.group.entities.newGroupNode-0.value.x' '1'
 expectSuccess 'tests.group.entities.standaloneNode.value.x' '1'
 expectSuccess 'tests.group.entities.nodeA.value.x' '"nodeAParentB"'
 expectSuccess '{ inherit (tests.group.entities.doubleLayer-node.value) channel x; }' '{"channel":"doubleLayer-node","x":"doubleLayer-node"}'
+expectSuccess 'tests.group.entities.fs.value.config.fileSystems."/".fsType' '"zfs"'
 
 expectSuccess 'tests.lib.entities.topLib-node.value.final' '{"lib":true,"libP":{"common":null,"node":null,"top":{"lib":true,"libP":{"override":"top"}}}}'
 expectSuccess 'tests.lib.entities.topLib-group-0.value.final' '{"lib":true,"libP":{"common":null,"node":null,"top":{"lib":true,"libP":{"override":"top"}}}}'
