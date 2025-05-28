@@ -380,7 +380,7 @@ deploy_node() {
 			"${args[@]}"
 		;;
 	darwin)
-		darwin-rebuild switch \
+		sudo darwin-rebuild switch \
 			--flake "$flake?submodules=1#$node_name" \
 			--show-trace
 		;;
