@@ -481,7 +481,6 @@ cmd_secrets() {
 		local output=${2:-}
 		flake=$(find_flake)
 
-		set -x
 		if [[ $f != - ]]; then
 			f=$(realpath --no-symlinks --relative-base "$flake" "$f")
 			if [[ $f = /* ]]; then
