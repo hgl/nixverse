@@ -828,9 +828,19 @@ eval_nixverse_nix() {
 		return 1
 		;;
 	esac
+
+	expr=$(
+		cat <<EOF
+args:
+  if args ? nixverse then
+  	with (args.nixverse "$flake"); $expr
+  else
+  	builtins.abort "not inside a flake directory with nixverse loaded"
+EOF
+	)
 	nix eval \
 		--no-warn-dirty \
-		--apply "{ nixverse, ... }: with (nixverse \"$flake\"); $expr" \
+		--apply "$expr" \
 		--show-trace \
 		"${args[@]}" \
 		"$flake?submodules=1#."
