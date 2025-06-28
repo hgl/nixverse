@@ -184,35 +184,35 @@ A typical Nixverse-managed flake looks like this:
 
 ```
 your-flake/
-├ nodes/
-│ ├ your-node-name/
-│ │ ├ node.nix
-│ │ ├ configuration.nix
-│ │ └ home/
-│ │   └ your-user-name/
-│ │     └ home.nix
-│ ├ your-group-name/
-│ │ ├ group.nix
-│ │ ├ common/
-│ │ │ ├ configuration.nix
-│ │ │ └ home/
-│ │ └ your-subnode-name/
-│ │   ├ configuration.nix
-│ │   └ home/
-├ lib/
-├ pkgs/
-├ modules/
-│ ├ nixos/
-│ ├ darwin/
-│ └ home/
-├ private/ (replicates the structure of your-flake/)
-│ ├ secrets.yaml
-│ ├ nodes/
-│ ├ lib/
-│ ├ pkgs/
-│ └ modules/
-├ flake.nix
-└ flake.lock
+├─ nodes/
+│  ├─ your-node-name/
+│  │  ├─ node.nix
+│  │  ├─ configuration.nix
+│  │  └─ home/
+│  │     └─ your-user-name/
+│  │        └─ home.nix
+│  ├─ your-group-name/
+│  │  ├─ group.nix
+│  │  ├─ common/
+│  │  │  ├─ configuration.nix
+│  │  │  └─ home/
+│  │  └─ your-subnode-name/
+│  │     ├─ configuration.nix
+│  │     └─ home/
+├─ lib/
+├─ pkgs/
+├─ modules/
+│  ├─ nixos/
+│  ├─ darwin/
+│  └─ home/
+├─ private/ (replicates the structure of your-flake/)
+│  ├─ secrets.yaml
+│  ├─ nodes/
+│  ├─ lib/
+│  ├─ pkgs/
+│  └─ modules/
+├─ flake.nix
+└─ flake.lock
 ```
 
 - **nodes**: nodes and groups, one in each sub-directory
