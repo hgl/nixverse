@@ -605,10 +605,10 @@ let
           );
         in
         assert lib.assertMsg (lib.isAttrs v) "${loc} must evaluate to an attribute set";
-        assert lib.assertMsg (!v ? type) "Do not specify `type` in ${loc}";
-        assert lib.assertMsg (!v ? name) "Do not specify `name` in ${loc}";
-        assert lib.assertMsg (!v ? parents) "Do not specify `parents` in ${loc}";
-        assert lib.assertMsg (!v ? config) "Do not specify `config` in ${loc}";
+        assert lib.assertMsg (!v ? type) "`type` is a reserved attribute name: ${loc}";
+        assert lib.assertMsg (!v ? name) "`name` is a reserved attribute name: ${loc}";
+        assert lib.assertMsg (!v ? parents) "`parents` is a reserved attribute name: ${loc}";
+        assert lib.assertMsg (!v ? config) "`config` is a reserved attribute name: ${loc}";
         v;
       inputs = lib.concatMapAttrs (
         name: input:
