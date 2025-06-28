@@ -105,6 +105,7 @@
               [
                 "lib"
                 "group"
+                "groups"
                 "selfRef"
                 "crossRef"
                 "groupEmpty"

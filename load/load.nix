@@ -81,11 +81,11 @@ let
         '';
       getNodesMakefileTargets =
         entityNames:
-        toString (map (nodeName: "nodes/${nodeName}") (findNodeNames (normalizeEntityNames entityNames)));
+        toString (map (nodeName: "nodes/${nodeName}") (findNodeNames (validateEntityNames entityNames)));
       getNodeInstallJobs =
         entityNames:
         let
-          nodeNames = findNodeNames (normalizeEntityNames entityNames);
+          nodeNames = findNodeNames (validateEntityNames entityNames);
         in
         map (
           nodeName:
@@ -120,7 +120,7 @@ let
       getNodeBuildJobs =
         entityNames:
         let
-          nodeNames = findNodeNames (normalizeEntityNames entityNames);
+          nodeNames = findNodeNames (validateEntityNames entityNames);
         in
         lib.concatMap (
           nodeName:
@@ -140,7 +140,7 @@ let
       getNodeDeployJobs =
         entityNames:
         let
-          nodeNames = findNodeNames (normalizeEntityNames entityNames);
+          nodeNames = findNodeNames (validateEntityNames entityNames);
           numNode = lib.length nodeNames;
         in
         map (
@@ -164,7 +164,7 @@ let
       getNodeValueData =
         entityNames:
         let
-          inherit (segregateEntityNames (normalizeEntityNames entityNames)) nodes groups;
+          inherit (segregateEntityNames (validateEntityNames entityNames)) nodes groups;
         in
         lib.mapAttrs (
           groupName: _:
@@ -174,7 +174,8 @@ let
           {
             inherit (group) type;
             name = groupName;
-            parents = group.parentNames;
+            parentGroups = group.parentNames;
+            groups = findAllGroupNames [ groupName ];
             children = group.childNames;
           }
         ) groups
@@ -211,7 +212,9 @@ let
               [
                 "node_${nodeName}_dir := ${node.dir}"
                 "node_${nodeName}_secrets_sections := ${
-                  toString (map ({ parentName, ... }: parentName) (findAncestorNames nodeName) ++ [ nodeName ])
+                  toString (
+                    map ({ parentName, ... }: parentName) (recursiveFindAncestorNames nodeName) ++ [ nodeName ]
+                  )
                 }"
               ]
             ) nodeNames
@@ -429,7 +432,8 @@ let
         // {
           type = "node";
           name = nodeName;
-          parents = parentNames;
+          parentGroups = parentNames;
+          groups = findAllGroupNames [ nodeName ];
           inherit (configuration) config;
         };
       valueLocs =
@@ -544,7 +548,7 @@ let
                 values = [ ];
                 value = { };
               }
-              (findAncestorNames nodeName);
+              (recursiveFindAncestorNames nodeName);
         in
         merged.values
         ++ lib.optionals (!definedByGroup) (
@@ -607,7 +611,8 @@ let
         assert lib.assertMsg (lib.isAttrs v) "${loc} must evaluate to an attribute set";
         assert lib.assertMsg (!v ? type) "`type` is a reserved attribute name: ${loc}";
         assert lib.assertMsg (!v ? name) "`name` is a reserved attribute name: ${loc}";
-        assert lib.assertMsg (!v ? parents) "`parents` is a reserved attribute name: ${loc}";
+        assert lib.assertMsg (!v ? parentGroups) "`parentGroups` is a reserved attribute name: ${loc}";
+        assert lib.assertMsg (!v ? groups) "`groups` is a reserved attribute name: ${loc}";
         assert lib.assertMsg (!v ? config) "`config` is a reserved attribute name: ${loc}";
         v;
       inputs = lib.concatMapAttrs (
@@ -640,7 +645,7 @@ let
           );
         in
         childLib
-      ) topLib (findAncestorNames nodeName);
+      ) topLib (recursiveFindAncestorNames nodeName);
       topLib =
         let
           v = loadLib "" { lib' = topLib; };
@@ -677,7 +682,8 @@ let
             ${entityName} = {
               inherit (entity) type;
               name = entityName;
-              parents = entity.parentNames;
+              parentGroups = entity.parentNames;
+              groups = findAllGroupNames [ entityName ];
               children = entity.childNames;
             };
           };
@@ -818,15 +824,13 @@ let
         paths ++ recursiveFindFilesInNode nodeName "hardware-configuration.nix" ++ diskConfigFiles;
       diskConfigFiles = recursiveFindFilesInNode nodeName "disk-config.nix";
       homeFiles = lib.zipAttrs (
-        builtins.foldl' (
-          paths:
+        lib.concatMap (
           { parentName, entityName }:
-          paths
-          ++ findHomeFiles "${publicDir}/nodes/${parentName}/common"
+          findHomeFiles "${publicDir}/nodes/${parentName}/common"
           ++ findHomeFiles "${privateDir}/nodes/${parentName}/common"
           ++ findHomeFiles "${publicDir}/nodes/${parentName}/${entityName}"
           ++ findHomeFiles "${privateDir}/nodes/${parentName}/${entityName}"
-        ) [ ] (findAncestorNames nodeName)
+        ) (recursiveFindAncestorNames nodeName)
         ++ lib.optionals (!definedByGroup) (
           findHomeFiles "${publicDir}/nodes/${nodeName}" ++ findHomeFiles "${privateDir}/nodes/${nodeName}"
         )
@@ -884,6 +888,7 @@ let
         configuration
         sshHostKey
         diskConfigFiles
+        nodes # Exposed for tests
         ;
     };
   loadGroup =
@@ -928,15 +933,13 @@ let
     }).config;
   recursiveFindFilesInNode =
     nodeName: fileName:
-    builtins.foldl' (
-      paths:
+    lib.concatMap (
       { parentName, entityName }:
-      paths
-      ++ optionalPath "${publicDir}/nodes/${parentName}/common/${fileName}"
+      optionalPath "${publicDir}/nodes/${parentName}/common/${fileName}"
       ++ optionalPath "${privateDir}/nodes/${parentName}/common/${fileName}"
       ++ optionalPath "${publicDir}/nodes/${parentName}/${entityName}/${fileName}"
       ++ optionalPath "${privateDir}/nodes/${parentName}/${entityName}/${fileName}"
-    ) [ ] (findAncestorNames nodeName)
+    ) (recursiveFindAncestorNames nodeName)
     ++ lib.optionals (entityObjs.${nodeName}.rawValue != null) (
       optionalPath "${publicDir}/nodes/${nodeName}/${fileName}"
       ++ optionalPath "${privateDir}/nodes/${nodeName}/${fileName}"
@@ -952,7 +955,7 @@ let
     else
       optionalPath "${publicDir}/nodes/${nodeName}/${fileName}"
       ++ optionalPath "${privateDir}/nodes/${nodeName}/${fileName}";
-  findAncestorNames =
+  recursiveFindAncestorNames =
     entityName:
     let
       find =
@@ -970,7 +973,7 @@ let
         ++ map (parentName: { inherit parentName entityName; }) parentNames;
     in
     find entityName { };
-  normalizeEntityNames =
+  validateEntityNames =
     entityNames:
     let
       names = lib.unique entityNames;
@@ -1000,6 +1003,19 @@ let
         ) entityNames;
     in
     lib.attrNames (find entityNames);
+  findAllGroupNames =
+    entityNames:
+    lib.attrNames (
+      lib'.concatMapListToAttrs (
+        entityName:
+        lib'.concatMapListToAttrs (
+          { parentName, ... }:
+          {
+            ${parentName} = true;
+          }
+        ) (recursiveFindAncestorNames entityName)
+      ) entityNames
+    );
   segregateEntityNames =
     entityNames:
     builtins.foldl'

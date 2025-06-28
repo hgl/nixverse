@@ -50,6 +50,11 @@ expectSuccess 'tests.group.entities.nodeA.value.x' '"nodeAParentB"'
 expectSuccess '{ inherit (tests.group.entities.doubleLayer-node.value) channel x; }' '{"channel":"doubleLayer-node","x":"doubleLayer-node"}'
 expectSuccess 'tests.group.entities.fs.value.config.fileSystems."/".fsType' '"zfs"'
 
+expectSuccess 'tests.groups.entities."0node".value.parentGroups' '["1parentA","1parentB"]'
+expectSuccess 'tests.groups.entities."0node".value.groups' '["1parentA","1parentB","2grandParentAA","2grandParentAB","2grandParentBA","2grandParentBB","3greatGrandParentAAA","3greatGrandParentAAB","3greatGrandParentABA","3greatGrandParentABB"]'
+expectSuccess 'tests.groups.entities."0node".nodes."1parentA".parentGroups' '["2grandParentAA","2grandParentAB"]'
+expectSuccess 'tests.groups.entities."0node".nodes."1parentA".groups' '["2grandParentAA","2grandParentAB","3greatGrandParentAAA","3greatGrandParentAAB","3greatGrandParentABA","3greatGrandParentABB"]'
+
 expectSuccess 'tests.lib.entities.topLib-node.value.final' '{"lib":true,"libP":{"common":null,"node":null,"top":{"lib":true,"libP":{"override":"top"}}}}'
 expectSuccess 'tests.lib.entities.topLib-group-0.value.final' '{"lib":true,"libP":{"common":null,"node":null,"top":{"lib":true,"libP":{"override":"top"}}}}'
 expectSuccess 'tests.lib.entities.commonLib-0.value.final' '{"lib":true,"libP":{"common":{"lib":true,"libP":{"override":"common","top":{"lib":true,"libP":{"override":"top"}}}},"node":null,"top":{"lib":true,"libP":{"override":"top"}}}}'
