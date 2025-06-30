@@ -45,7 +45,6 @@
         {
           inherit nixverse;
           default = nixverse;
-          mkShellMinimal = pkgs.callPackage (import ./pkgs/mkShellMinimal.nix) { };
         }
       );
       templates = {
@@ -57,23 +56,34 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           pkgs' = self.packages.${system};
+          packages = with pkgs; [
+            nil
+            nixfmt-rfc-style
+            shfmt
+            shellcheck
+            nodePackages.bash-language-server
+            nodePackages.yaml-language-server
+            ssh-to-age
+            sops
+            yq
+            jq
+            util-linux # for experimenting with getopt
+            pkgs'.nixverse
+          ];
         in
         {
-          default = pkgs'.mkShellMinimal {
-            packages = with pkgs; [
-              nil
-              nixfmt-rfc-style
-              shfmt
-              shellcheck
-              nodePackages.bash-language-server
-              nodePackages.yaml-language-server
-              ssh-to-age
-              sops
-              yq
-              jq
-              util-linux # for experimenting with getopt
-              pkgs'.nixverse
-            ];
+          default = derivation {
+            name = "shell";
+            inherit system packages;
+            builder = "${pkgs.bash}/bin/bash";
+            outputs = [ "out" ];
+            stdenv = pkgs.writeTextDir "setup" ''
+              set -e
+
+              for p in $packages; do
+                PATH=$p/bin:$PATH
+              done
+            '';
           };
         }
       );
