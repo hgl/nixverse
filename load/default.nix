@@ -24,8 +24,5 @@ outputs
   "darwinConfigurations"
 ]
 // {
-  packages = lib.mapAttrs (system: pkgs': pkgs' // outputs.packages.${system} or { }) final.packages;
-}
-// {
   inherit (final) nixverse;
 }

@@ -82,10 +82,6 @@ The `nixverse` output can be specified to configurate Nixverse. It's an attribut
   - Determines whether the `lib'` argument (see [Defining Custom Lib Functions](#defining-custom-lib-functions)) also contains functions from input `nixverse.lib`.
   - **Type**: boolean
   - **Default**: `true`
-- `inheritPkgs`
-  - Determines whether the `pkgs'` argument (see [Defining Custom Packages](#defining-custom-packages)) also contains functions from input `nixverse.packages`.
-  - **Type**: boolean
-  - **Default**: `true`
 
 ## Defining Nodes
 
@@ -569,12 +565,11 @@ Examples:
 
 Custom packages, available to configuration files from the `pkgs'` argument, are defined in the `pkgs/<name>.nix` or `pkgs/<name>/default.nix` file. Each file should be a function that returns a nix derivation.
 
-You can specify the package names as the function's arguments, plus:
+You can specify the dependent package names as the function's arguments, plus:
 
 - `pkgs-unstable`: exists only if the node accessing the `pkgs'` argument uses a channel not equal to `"unstable"` and a `nixpkgs-unstable` input exists. It provides unstable nixpkgs packages.
 - `pkgs'`: contains custom packages.
-
-The `pkgs'` argument by default only contains packages defined by you, but if the `inheritPkgs` [Nixverse option](#nixverse-options) is `true`, it also contains [Nixverse's packages](../pkgs).
+- [Nixverse's packages](../pkgs)
 
 ```nix
 # pkgs/greet.nix
@@ -593,6 +588,38 @@ writeShellScriptBin "greet" ''
   # "greet" command will be available in your $PATH
 }
 ```
+
+In your flake.nix, these packages can be accessed by calling the `nixverse.loadPkgs'` function. It requires two arguments:
+
+1. `self`: The reference to your flake's final outputs, passed from the outputs attribute.
+2. An attribute set containing:
+3. `nixpkgs`: the `nixpkgs` input
+4. `system`:
+
+For example:
+
+```nix
+{
+  inputs = {
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # Add your other flake inputs here
+    nixverse = {
+      url = "github:hgl/nixverse";
+      inputs.nixpkgs.follows = "nixpkgs-unstable";
+    };
+  };
+  outputs = { self, nixpkgs-unstable, nixverse, ... }: nixverse.load self {
+    packages = nixverse.lib.forAllSystems (system: {
+      inherit (nixverse.loadPkgs' self {
+        nixpkgs = nixpkgs-unstable;
+        inherit system;
+      }) foo bar;
+    })
+  };
+}
+```
+
+This exposes the foo and bar packages through the `packages` output, with their dependencies tracking the `nixpkgs-unstable` input.
 
 ## Defining Custom Modules
 

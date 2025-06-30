@@ -33,6 +33,9 @@
       load = import ./load {
         inherit lib lib' self;
       };
+      loadPkgs' = import ./loadPkgs {
+        inherit lib lib' self;
+      };
       packages = lib'.forAllSystems (
         system:
         let

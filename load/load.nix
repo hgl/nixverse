@@ -6,23 +6,19 @@
   outputs,
 }:
 let
+  inherit (lib'.internal)
+    call
+    importDirOrFile
+    importDirAttrs
+    joinPath
+    optionalPath
+    recursiveFilter
+    evalModulesAssertWarn
+    ;
   publicDir = flake.outPath;
   privateDir = "${publicDir}/private";
   rawPkgs = importDirAttrs "${publicDir}/pkgs" // importDirAttrs "${privateDir}/pkgs";
   final = {
-    packages = lib'.forAllSystems (
-      system:
-      let
-        pkgs = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
-        callPackage = pkgs.newScope {
-          inherit pkgs';
-        };
-        pkgs' =
-          lib.optionalAttrs (nixverseConfig.inheritPkgs) self.packages.${system}
-          // lib.mapAttrs (_: v: callPackage v { }) rawPkgs;
-      in
-      pkgs'
-    );
     nixosModules =
       importDirAttrs "${publicDir}/modules/nixos"
       // importDirAttrs "${privateDir}/modules/nixos";
@@ -411,7 +407,7 @@ let
           let
             len = lib.length valueLocs;
           in
-          lib'.evalModulesAssertWarn {
+          evalModulesAssertWarn {
             modules =
               [
                 {
@@ -650,7 +646,10 @@ let
         let
           v = loadLib "" { lib' = topLib; };
         in
-        if nixverseConfig.inheritLib then lib.recursiveUpdate lib' v else v;
+        if nixverseConfig.inheritLib then
+          lib.recursiveUpdate (lib.removeAttrs lib' [ "internal" ]) v
+        else
+          v;
       loadLib =
         subdir: extraArgs:
         let
@@ -730,7 +729,7 @@ let
                     );
                     # TODO: support node-level packages
                     pkgs' =
-                      lib.optionalAttrs (nixverseConfig.inheritPkgs) self.packages.${system}
+                      lib.removeAttrs self.packages.${system} [ "default" ]
                       // lib.mapAttrs (_: v: callPackage v { }) rawPkgs;
                   in
                   { inherit pkgs'; } // optionalPkgsUnstableAttr;
@@ -923,7 +922,7 @@ let
       inherit rawValue parentNames childNames;
     };
   nixverseConfig =
-    (lib'.evalModulesAssertWarn {
+    (evalModulesAssertWarn {
       modules = [
         {
           imports = [ ./flakeModule.nix ];
@@ -1052,66 +1051,5 @@ let
         groups = { };
       }
       entityNames;
-  importDirOrFile =
-    base: name: default:
-    (importDirAttrs base).${name} or default;
-  importDirAttrs =
-    base:
-    if lib.pathExists base then
-      lib.concatMapAttrs (
-        name: v:
-        if v == "directory" then
-          if lib.pathExists "${base}/${name}/default.nix" then
-            {
-              ${name} = import "${base}/${name}";
-            }
-          else
-            { }
-        else
-          let
-            n = lib.removeSuffix ".nix" name;
-          in
-          if n != name then
-            {
-              ${n} = import "${base}/${name}";
-            }
-          else
-            { }
-      ) (builtins.readDir base)
-    else
-      { };
-  call =
-    f: args:
-    if lib.isFunction f then
-      let
-        params = lib.functionArgs f;
-      in
-      f (if params == { } then args else lib.intersectAttrs params args)
-    else
-      f;
-  joinPath =
-    parts:
-    "${lib.head parts}${
-      lib.concatStrings (map (part: if part == "" then "" else "/${part}") (lib.drop 1 parts))
-    }";
-  optionalPath = path: if lib.pathExists path then [ path ] else [ ];
-  recursiveFilter =
-    pred: v:
-    if lib.isAttrs v then
-      lib.concatMapAttrs (
-        name: subv:
-        if pred name subv then
-          {
-            ${name} = recursiveFilter pred subv;
-          }
-        else
-          { }
-      ) v
-    else if lib.isList v then
-      lib.concatLists (
-        lib.imap0 (i: subv: if pred i subv then [ (recursiveFilter pred subv) ] else [ ]) v
-      )
-    else
-      v;
 in
 final
