@@ -198,21 +198,16 @@ install_node() {
 	local flake=$1
 	local node_name=$2
 	local node_dir=$3
-	local node_name=$2
 	local ssh_host_key=$4
-	local partition_script=$5
-	local build_on_remote=$6
-	local target_host=$7
-	shift 7
+	local build_on_remote=$5
+	local target_host=$6
+	shift 6
 
 	local args=()
 	local sshOpt
 	for sshOpt; do
 		args+=(-o "$sshOpt")
 	done
-	if [[ -n $partition_script ]]; then
-		args+=(--partition-script "$partition_script")
-	fi
 	if [[ -n $build_on_remote ]]; then
 		args+=(--build-on remote)
 	fi
@@ -230,7 +225,7 @@ install_node() {
 		args+=(--extra-files "$tmpdir")
 	fi
 
-	nixos-anywhere \
+	nixos-anywhere --no-disko-deps \
 		--flake "$flake?submodules=1#$node_name" \
 		--generate-hardware-config nixos-generate-config "$flake/$node_dir/hardware-configuration.nix" \
 		"${args[@]}" \

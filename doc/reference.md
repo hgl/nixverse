@@ -31,7 +31,7 @@ Table of Contents
 1. [The `nixverse` Command Line Tool](#the-nixverse-command-line-tool)
    1. [Install the `nixverse` Command Line Tool](#install-the-nixverse-command-line-tool)
    1. [Deploy Multiple Nodes in Parallel](#deploy-multiple-nodes-in-parallel)
-   1. [Install NixOS and nix-darwin with One Command](#install-nixos-and-nix-darwin-with-one-command)
+   1. [Install NixOS and nix-darwin](#install-nixos-and-nix-darwin)
 
 ## Installation
 
@@ -216,26 +216,6 @@ Optional
   - **Type**: list of strings
   - **Default**: `config.deploy.sshOpts`
   - **Example**: `[ "StrictHostKeyChecking=no" ]`
-- `install.partitions.device`
-  - Path of the device to be partitioned
-  - **Type**: path
-  - **Example**: `"/dev/nvme0n1"`
-- `install.partitions.boot.type`
-  - Choose between EFI and legacy bios boot modes.
-  - **Type**: one of `"efi"`, `"bios"`
-- `install.partitions.root.format`
-  - File system for the partition mounted at `/`.
-  - **Type**: one of `"ext4"`, `"xfs"`, `"btrfs"`
-- `install.partitions.swap.enable`
-  - Whether to create a swap partition
-  - **Type**: boolean
-  - **Default**: `true`
-- `install.partitions.swap.size`
-  - **Type**: string
-  - **Default**: max(1GB, memory size)
-- `install.partitions.script`
-  - Custom partition script. This script is directly executed by the ssh command, use only commands that are available by default in the target NixOS installer.
-  - **Type**: string
 
 ### `channel` and the `inputs` Argument
 
@@ -345,7 +325,7 @@ In addition, it also has access to a `lib'` argument, which is explained in [Def
 A few files inside the node folder (e.g., `nodes/hgl`) will be imported automatically:
 
 - `hardware-configuration.nix`: generated automatically when running `nixverse node install`, or can be generated with `nixos-generate-config`.
-- `disk-config.nix`: contain [disko](https://github.com/nix-community/disko) configuration. If present, the `disko` input (after renaming) will be imported automatically. Make sure the input exists in `flake.nix`.
+- `disk-config.nix`: refer to the section on [installing NixOS and nix-darwin](#install-nixos-and-nix-darwin).
 
 ## Defining Groups
 
@@ -779,22 +759,25 @@ Notice you can still refer to a private node configuration value, package or mod
 
 ## The `nixverse` Command Line Tool
 
-Nixverse provides a command line tool `nixverse` that provides a lot of convenient features.
+The Nixverse CLI provides parallel deployments, secret management and NixOS and nix-darwin installation.
 
-Run `nixverse help` to learn about its usage. The followings provide a bird's eye view on some important features.
+Run `nixverse help` to learn about its usage.
 
 ### Install the `nixverse` Command Line Tool
 
-The `pkgs` argument for configurations contains a `nixverse` package. You can put it in configuration `environment.systemPackages` or home manager configuration `home.packages` to install it to your `$PATH`.
+The `pkgs'` argument for configurations contains a `nixverse` package. You can put it in configuration `environment.systemPackages` or home manager configuration `home.packages` to make it available on the command line.
 
 ### Deploy Multiple Nodes in Parallel
 
-After you have specified the `deploy` meta configuration for the nodes you want to deploy with remote deployment values. You can run `nixverse nodes deploy <name>...`, where ` <name>...` can be one or more node or group names, and the result descedant nodes will be deployed in parallel.
+After you have specified the `deploy` meta configuration for the nodes you want to deploy with remote deployment values. You can run `nixverse nodes deploy <name>...`, where ` <name>...` can be one or more node or group names, and the result descendant nodes will be deployed in parallel.
 
-### Install NixOS and nix-darwin with One Command
+### Install NixOS and nix-darwin
 
-After you have specified the `install` meta configuration for the NixOS nodes you want to install. You can run `nixverse nodes deploy <name>...`, where ` <name>...` can be one or more node or group names, and the result descedant nodes will be installed in parallel.
+The Nixverse CLI allows NixOS to be installed declaratively to a remote machine. Simply follow these steps:
 
-Nixverse provides a simple script that partitions your device into boot, file systtem and optionally swap partitions, using the default tools comes with the NixOS install. You can specify your own script with `install.partitions.script` or provide a `disk-config.nix` file to use disko. Note that disko will copy a lot of files, if your machine does not have enough free it can fail. The provided script doesn't suffer from issue. And if you use the default script, the `fileSystems` and `swapDevices` configurations are automatically set with correct values too.
+1. Create a `disk-config.nix` file for your node. It contains [disko](https://github.com/nix-community/disko) options to partition the disk.
+1. Boot the NixOS ISO image on the remote machine and make it accessible with SSH.
+1. Specify the [`install` meta configuration](#special-node-meta-configuration-values) for your node. Set its SSH address to `install.targetHost` (or `deploy.targetHost`).
+1. Run `nixverse nodes install <name>...`. If ` <name>...` contains more than one node, all of them will be installed in parallel. (This command simply invokes [nixos-anywhere](https://github.com/nix-community/nixos-anywhere)).
 
-Darwin nodes don't need to be installed, you can use `nixverse nodes deploy` to deploy to a brand new Mac (with `nix` installed of course) directly. Make sure you set the node's `deploy.local` to `true`.
+For a Darwin node, running `nixverse nodes deploy` installs `nix-darwin` automatically. Make sure Nix itself is installed first and the meta configuration `deploy.local` is set to `true`.

@@ -39,11 +39,7 @@ runCommand "nixverse"
             ssh-to-age
             jq
             yq
-            (nixos-anywhere.overrideAttrs (
-              finalAttrs: previousAttrs: {
-                patches = [ ./nixos-anywhere.patch ];
-              }
-            ))
+            nixos-anywhere
             nixos-rebuild
             (builtins.placeholder "out")
             (buildGoModule {

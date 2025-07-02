@@ -59,50 +59,6 @@
             type = lib.types.listOf lib.types.nonEmptyStr;
             default = config.deploy.sshOpts;
           };
-          partitions = lib.mkOption {
-            type = lib.types.submodule {
-              options = {
-                device = lib.mkOption {
-                  type = lib.types.nullOr lib.types.path;
-                  default = null;
-                };
-                # TODO: add boot.size
-                boot.type = lib.mkOption {
-                  type = lib.types.enum [
-                    null
-                    "efi"
-                    "bios"
-                  ];
-                  default = null;
-                };
-                root.format = lib.mkOption {
-                  type = lib.types.enum [
-                    null
-                    "ext4"
-                    "xfs"
-                    "btrfs"
-                  ];
-                  default = null;
-                };
-                swap = {
-                  enable = lib.mkOption {
-                    type = lib.types.nullOr lib.types.bool;
-                    default = null;
-                  };
-                  size = lib.mkOption {
-                    # TODO: disallow invalid values
-                    type = lib.types.str;
-                    default = "";
-                  };
-                };
-                script = lib.mkOption {
-                  type = lib.types.str;
-                  default = "";
-                };
-              };
-            };
-            default = { };
-          };
         };
       };
       default = { };

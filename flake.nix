@@ -2,7 +2,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     nixos-anywhere = {
-      url = "github:nix-community/nixos-anywhere/77e6a4e14baa93a29952ea9f0e4a59a29cca09e9";
+      url = "github:nix-community/nixos-anywhere";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-darwin = {
@@ -60,7 +60,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           pkgs' = self.packages.${system};
           packages = with pkgs; [
-            nil
+            nixd
             nixfmt-rfc-style
             shfmt
             shellcheck

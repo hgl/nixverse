@@ -94,21 +94,10 @@ let
           assert lib.assertMsg (
             node.value.install.targetHost != ""
           ) "Either install.targetHost or deploy.targetHost must not be empty for node ${nodeName}";
+          assert lib.assertMsg (node.diskConfigFiles != [ ]) "Missing disk-config.nix for node ${nodeName}";
           {
             n = nodeName;
-            c = "install_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir} ${lib.escapeShellArg node.sshHostKey} ${
-              lib.escapeShellArg (
-                if node.diskConfigFiles != [ ] then
-                  ""
-                else if node.value.install.partitions.script != "" then
-                  node.value.install.partitions.script
-                else
-                  import ./partitionScript.nix {
-                    inherit lib nodeName;
-                    config = node.value;
-                  }
-              )
-            } ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.value.install.targetHost} ${
+            c = "install_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir} ${lib.escapeShellArg node.sshHostKey} ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.value.install.targetHost} ${
               toString (map (opt: lib.escapeShellArg opt) node.value.deploy.sshOpts)
             }";
           }
@@ -183,13 +172,7 @@ let
           recursiveFilter (_: v: !lib.isFunction v) (
             lib.removeAttrs node.value [
               "config"
-              "install"
             ]
-            // lib.optionalAttrs (node.diskConfigFiles == [ ]) {
-              install = node.value.install // {
-                partitions = lib.removeAttrs node.value.partitions [ "script" ];
-              };
-            }
           )
         ) nodes;
       getSecretsMakefileVars =
@@ -745,84 +728,71 @@ let
               }
             )
           ]
-          ++ lib.optional (diskConfigFiles != [ ]) {
-            imports = [ inputs.disko.nixosModules.disko ];
-          }
-          ++
-            lib.optional
-              (
-                os == "nixos"
-                && diskConfigFiles == [ ]
-                && nodeValue.install.partitions.device != null
-                && nodeValue.install.partitions.script == ""
-              )
-              (
-                lib.optionalAttrs (nodeValue.install.partitions.root.format != null) {
-                  fileSystems."/" = lib.mkDefault {
-                    device = "/dev/disk/by-partlabel/root";
-                    fsType = nodeValue.install.partitions.root.format;
-                  };
-                }
-                // lib.optionalAttrs (nodeValue.install.partitions.swap.enable != null) {
-                  swapDevices = lib.optional nodeValue.install.partitions.swap.enable {
-                    device = "/dev/disk/by-partlabel/swap";
-                  };
-                }
-              )
-          ++ lib.optional (sshHostKey != "") {
-            imports = [ inputs.sops-nix.nixosModules.sops ];
-            services.openssh.hostKeys = [
-              {
-                bits = 4096;
-                path = "/etc/ssh/ssh_host_rsa_key";
-                type = "rsa";
-              }
-            ];
-            sops =
-              {
-                age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-              }
-              // lib.optionalAttrs (secretsYamlFile != "") {
-                defaultSopsFile = lib.mkDefault secretsYamlFile;
-              };
-          }
-          ++ lib.optional (homeFiles != { }) (
-            { pkgs', ... }:
-            let
-              homeManager =
-                let
-                  v =
-                    {
-                      nixos = inputs.home-manager.nixosModules.home-manager;
-                      darwin = inputs.home-manager.darwinModules.home-manager;
-                    }
-                    .${os};
-                in
-                assert lib.assertMsg (inputs ? home-manager)
-                  "Missing flake input home-manager-${channel}${
-                    lib.optionalString (channel != "unstable") "-${os}"
-                  }, required by node ${nodeName}";
-                v;
-            in
+          ++ lib.optional (diskConfigFiles != [ ]) (
+            assert lib.assertMsg (inputs ? disko)
+              "Missing flake input disko-${channel}${
+                lib.optionalString (channel != "unstable") "-${os}"
+              }, required by node ${nodeName}";
             {
-              imports = [ homeManager ];
-              home-manager = {
-                useGlobalPkgs = lib.mkDefault true;
-                useUserPackages = lib.mkDefault true;
-                extraSpecialArgs = {
-                  inherit
-                    lib'
-                    pkgs'
-                    inputs
-                    nodes
-                    ;
-                  modules' = final.homeModules;
-                };
-                users = lib.mapAttrs (_: paths: {
-                  imports = paths;
-                }) homeFiles;
-              };
+              imports = [ inputs.disko.nixosModules.disko ];
             }
+          )
+          ++ lib.optional (sshHostKey != "") (
+            assert lib.assertMsg (inputs ? sops-nix)
+              "Missing flake input sops-nix-${channel}${
+                lib.optionalString (channel != "unstable") "-${os}"
+              }, required by node ${nodeName}";
+            {
+              imports = [ inputs.sops-nix.nixosModules.sops ];
+              services.openssh.hostKeys = [
+                {
+                  bits = 4096;
+                  path = "/etc/ssh/ssh_host_rsa_key";
+                  type = "rsa";
+                }
+              ];
+              sops =
+                {
+                  age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+                }
+                // lib.optionalAttrs (secretsYamlFile != "") {
+                  defaultSopsFile = lib.mkDefault secretsYamlFile;
+                };
+            }
+          )
+          ++ lib.optional (homeFiles != { }) (
+            assert lib.assertMsg (inputs ? home-manager)
+              "Missing flake input home-manager-${channel}${
+                lib.optionalString (channel != "unstable") "-${os}"
+              }, required by node ${nodeName}";
+            (
+              { pkgs', ... }:
+              {
+                imports = [
+                  {
+                    nixos = inputs.home-manager.nixosModules.home-manager;
+                    darwin = inputs.home-manager.darwinModules.home-manager;
+                  }
+                  .${os}
+                ];
+                home-manager = {
+                  useGlobalPkgs = lib.mkDefault true;
+                  useUserPackages = lib.mkDefault true;
+                  extraSpecialArgs = {
+                    inherit
+                      lib'
+                      pkgs'
+                      inputs
+                      nodes
+                      ;
+                    modules' = final.homeModules;
+                  };
+                  users = lib.mapAttrs (_: paths: {
+                    imports = paths;
+                  }) homeFiles;
+                };
+              }
+            )
           );
       };
       mkConfiguration =
@@ -842,7 +812,9 @@ let
         in
         assert lib.assertMsg (lib.length paths != 0) "Missing ${nodeDir}/configuration.nix";
         paths ++ recursiveFindFilesInNode nodeName "hardware-configuration.nix" ++ diskConfigFiles;
-      diskConfigFiles = recursiveFindFilesInNode nodeName "disk-config.nix";
+      diskConfigFiles = lib.optionals (os == "nixos") (
+        recursiveFindFilesInNode nodeName "disk-config.nix"
+      );
       homeFiles = lib.zipAttrs (
         lib.concatMap (
           { parentName, entityName }:
