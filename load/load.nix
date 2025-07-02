@@ -611,21 +611,29 @@ let
         assert lib.assertMsg (!v ? groups) "`groups` is a reserved attribute name: ${loc}";
         assert lib.assertMsg (!v ? config) "`config` is a reserved attribute name: ${loc}";
         v;
-      inputs = lib.concatMapAttrs (
-        name: input:
-        if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
-          { ${lib.removeSuffix "-${os}" name} = input; }
-        else if channel != "unstable" && lib.hasSuffix "-unstable" name then
-          { ${name} = input; }
-        else if lib.hasSuffix "-${channel}-${os}" name then
-          { ${lib.removeSuffix "-${channel}-${os}" name} = input; }
-        else if lib.hasSuffix "-${channel}" name then
-          { ${lib.removeSuffix "-${channel}" name} = input; }
-        else if lib.hasSuffix "-any" name then
-          { ${lib.removeSuffix "-any" name} = input; }
-        else
-          { }
-      ) flake.inputs;
+      inputs =
+        let
+          v = lib.concatMapAttrs (
+            name: input:
+            if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
+              { ${lib.removeSuffix "-${os}" name} = input; }
+            else if channel != "unstable" && lib.hasSuffix "-unstable" name then
+              { ${name} = input; }
+            else if lib.hasSuffix "-${channel}-${os}" name then
+              { ${lib.removeSuffix "-${channel}-${os}" name} = input; }
+            else if lib.hasSuffix "-${channel}" name then
+              { ${lib.removeSuffix "-${channel}" name} = input; }
+            else if lib.hasSuffix "-any" name then
+              { ${lib.removeSuffix "-any" name} = input; }
+            else
+              { }
+          ) flake.inputs;
+        in
+        assert lib.assertMsg (v ? nixpkgs)
+          "Missing flake input nixpkgs-${channel}${
+            lib.optionalString (channel != "unstable") "-${os}"
+          }, required by node ${nodeName}";
+        v;
       nodeLib =
         if definedByGroup then
           parentsLib
@@ -718,8 +726,8 @@ let
                 _module.args =
                   let
                     inherit (config.nixpkgs.hostPlatform) system;
-                    optionalPkgsUnstableAttr = lib.optionalAttrs (nodeValue.channel != "unstable") {
-                      pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
+                    optionalPkgsUnstableAttr = lib.optionalAttrs (channel != "unstable" && inputs ? nixpkgs-unstable) {
+                      pkgs-unstable = inputs.nixpkgs-unstable.legacyPackages.${system};
                     };
                     callPackage = pkgs.newScope (
                       optionalPkgsUnstableAttr
@@ -778,41 +786,54 @@ let
                 defaultSopsFile = lib.mkDefault secretsYamlFile;
               };
           }
-          ++
-
-            lib.optional (homeFiles != { }) (
-              { pkgs', ... }:
-              {
-                imports = [
-                  {
-                    nixos = inputs.home-manager.nixosModules.home-manager;
-                    darwin = inputs.home-manager.darwinModules.home-manager;
-                  }
-                  .${os}
-                ];
-                home-manager = {
-                  useGlobalPkgs = lib.mkDefault true;
-                  useUserPackages = lib.mkDefault true;
-                  extraSpecialArgs = {
-                    inherit
-                      lib'
-                      pkgs'
-                      inputs
-                      nodes
-                      ;
-                    modules' = final.homeModules;
-                  };
-                  users = lib.mapAttrs (_: paths: {
-                    imports = paths;
-                  }) homeFiles;
+          ++ lib.optional (homeFiles != { }) (
+            { pkgs', ... }:
+            let
+              homeManager =
+                let
+                  v =
+                    {
+                      nixos = inputs.home-manager.nixosModules.home-manager;
+                      darwin = inputs.home-manager.darwinModules.home-manager;
+                    }
+                    .${os};
+                in
+                assert lib.assertMsg (inputs ? home-manager)
+                  "Missing flake input home-manager-${channel}${
+                    lib.optionalString (channel != "unstable") "-${os}"
+                  }, required by node ${nodeName}";
+                v;
+            in
+            {
+              imports = [ homeManager ];
+              home-manager = {
+                useGlobalPkgs = lib.mkDefault true;
+                useUserPackages = lib.mkDefault true;
+                extraSpecialArgs = {
+                  inherit
+                    lib'
+                    pkgs'
+                    inputs
+                    nodes
+                    ;
+                  modules' = final.homeModules;
                 };
-              }
-            );
+                users = lib.mapAttrs (_: paths: {
+                  imports = paths;
+                }) homeFiles;
+              };
+            }
+          );
       };
       mkConfiguration =
         {
           nixos = inputs.nixpkgs.lib.nixosSystem;
-          darwin = inputs.nix-darwin.lib.darwinSystem;
+          darwin =
+            assert lib.assertMsg (inputs ? nix-darwin)
+              "Missing flake input nix-darwin-${channel}${
+                lib.optionalString (channel != "unstable") "-${os}"
+              }, required by node ${nodeName}";
+            inputs.nix-darwin.lib.darwinSystem;
         }
         .${os};
       configurationFiles =
