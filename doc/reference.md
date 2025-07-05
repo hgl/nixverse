@@ -649,10 +649,10 @@ To use sops-nix with Nixverse, you need to create a `.sops.yaml` file in the fla
 ```yaml
 # .sops.yaml
 creation_rules:
-  - age: <age pubic key>
+  - age: <age public key>
 ```
 
-Where `<age pubic key>` corresponds to a private key in your `keys.txt` file (read the [sops manual](https://github.com/getsops/sops/blob/main/README.rst) on how to create the `keys.txt` file and where it lives.).
+Where `<age public key>` corresponds to a private key in your `keys.txt` file (read the [sops manual](https://github.com/getsops/sops/blob/main/README.rst) on how to create the `keys.txt` file and where it lives.).
 
 Run `nixverse secrets edit`, a `secrets.yaml` file in the flake directory will be open in your text editor. This file contains all secrets for all nodes and groups. It contains an object with node and group names as the keys, each has sops secrets as values.
 
