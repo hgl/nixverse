@@ -182,24 +182,20 @@ Read Only:
 
 Optional
 
-- `deploy.local`
-  - Deploy this node locally when running `nixverse node deploy`.
-  - **Type**: boolean
 - `deploy.targetHost`
-  - Deploy this node to the specified host when running `nixverse node deploy`.
+  - Deploy this node to the specified host when running `nixverse node deploy`. Leave empty to deploy locally.
   - **Type**: string
   - **Example**: `root@nixos`
-- `deploy.buildHost`
-  - Build the configuration using the specified host when deploying.
-  - **Type**: string
-  - **Default**: `""`
-  - **Example**: `root@builder`
+- `deploy.buildOnRemote`
+  - Build the configuration on the host at `deploy.targetHost`.
+  - **Type**: boolean
+  - **Default**: `false`
 - `deploy.useRemoteSudo`
-  - Prefix remote comannds that run on `deploy.targetHost` and `deploy.buildHost` with `sudo`, allowing deploying as non-root user.
+  - Prefix remote commands that run on `deploy.targetHost` with `sudo`, allowing deploying as non-root user.
   - **Type**: boolean
   - **Default**: `false`
 - `deploy.sshOpts`
-  - Set ssh options for connection to `deploy.targetHost` and `deploy.buildHost`.
+  - Set ssh options for connection to `deploy.targetHost`.
   - **Type**: list of strings
   - **Default**: `[]`
   - **Example**: `[ "StrictHostKeyChecking=no" ]`
@@ -208,9 +204,9 @@ Optional
   - **Type**: string
   - **Default**: `config.deploy.targetHost`
 - `install.buildOnRemote`
-  - Build the configuration using `install.targetHost`.
+  - Build the configuration on the host at `install.targetHost`.
   - **Type**: boolean
-  - **Default**: `config.deploy.buildHost != ""`
+  - **Default**: `config.deploy.buildOnRemote`
 - `install.sshOpts`
   - Set ssh options for connection to `install.targetHost`.
   - **Type**: list of strings

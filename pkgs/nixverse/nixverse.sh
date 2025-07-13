@@ -198,9 +198,9 @@ install_node() {
 	local flake=$1
 	local node_name=$2
 	local node_dir=$3
-	local ssh_host_key=$4
+	local target_host=$4
 	local build_on_remote=$5
-	local target_host=$6
+	local ssh_host_key=$6
 	shift 6
 
 	local args=()
@@ -210,6 +210,8 @@ install_node() {
 	done
 	if [[ -n $build_on_remote ]]; then
 		args+=(--build-on remote)
+	else
+		args+=(--build-on local)
 	fi
 
 	if [[ -n $ssh_host_key ]]; then
@@ -352,7 +354,7 @@ deploy_node() {
 	local node_name=$2
 	local node_os=$3
 	local target_host=$4
-	local build_host=$5
+	local build_on_remote=$5
 	local use_remote_sudo=$6
 	local ssh_opts=$7
 
@@ -361,9 +363,9 @@ deploy_node() {
 		local args=()
 		if [[ -n $target_host ]]; then
 			args+=(--target-host "$target_host")
-		fi
-		if [[ -n $build_host ]]; then
-			args+=(--build-host "$build_host")
+			if [[ -n $build_on_remote ]]; then
+				args+=(--build-host "$target_host")
+			fi
 		fi
 		if [[ -n $use_remote_sudo ]]; then
 			args+=(--use-remote-sudo)

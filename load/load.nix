@@ -97,7 +97,7 @@ let
           assert lib.assertMsg (node.diskConfigFiles != [ ]) "Missing disk-config.nix for node ${nodeName}";
           {
             n = nodeName;
-            c = "install_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir} ${lib.escapeShellArg node.sshHostKey} ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.value.install.targetHost} ${
+            c = "install_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir} ${lib.escapeShellArg node.value.install.targetHost} ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.sshHostKey} ${
               toString (map (opt: lib.escapeShellArg opt) node.value.deploy.sshOpts)
             }";
           }
@@ -112,15 +112,12 @@ let
           let
             node = final.entities.${nodeName};
           in
-          if node.value.deploy.buildHost != "" then
-            [ ]
-          else
-            [
-              {
-                n = nodeName;
-                c = "build_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.value.os}";
-              }
-            ]
+          [
+            {
+              n = nodeName;
+              c = "build_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.value.os}";
+            }
+          ]
         ) nodeNames;
       getNodeDeployJobs =
         entityNames:
@@ -133,15 +130,11 @@ let
           let
             node = final.entities.${nodeName};
           in
-          assert lib.assertMsg (
-            node.value.deploy.local == true && node.value.deploy.targetHost == ""
-            || node.value.deploy.local == null && node.value.deploy.targetHost != ""
-          ) "Either deploy.local must be true or deploy.targetHost must not be empty for node ${nodeName}";
           assert lib.assertMsg (numNode != 1 -> node.value.deploy.targetHost != "")
             "Deploying multiple nodes where some of them are local is not allowed, deploy the local nodes individually.";
           {
             n = nodeName;
-            c = "deploy_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.value.os} ${lib.escapeShellArg node.value.deploy.targetHost} ${lib.escapeShellArg node.value.deploy.buildHost} ${lib.escapeShellArg node.value.deploy.buildHost} ${lib.escapeShellArg node.value.deploy.useRemoteSudo} ${
+            c = "deploy_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.value.os} ${lib.escapeShellArg node.value.deploy.targetHost} ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.value.deploy.useRemoteSudo} ${
               lib.escapeShellArg (map (opt: "-o ${lib.escapeShellArg opt}") node.value.deploy.sshOpts)
             }";
           }

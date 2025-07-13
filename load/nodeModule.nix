@@ -17,16 +17,9 @@
     deploy = lib.mkOption {
       type = lib.types.submodule {
         options = {
-          local = lib.mkOption {
-            type = lib.types.enum [
-              null
-              true
-            ];
-            default = null;
-          };
-          buildHost = lib.mkOption {
-            type = lib.types.str;
-            default = "";
+          buildOnRemote = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
           };
           targetHost = lib.mkOption {
             type = lib.types.str;
@@ -49,7 +42,7 @@
         options = {
           buildOnRemote = lib.mkOption {
             type = lib.types.bool;
-            default = config.deploy.buildHost != "";
+            default = config.deploy.buildOnRemote;
           };
           targetHost = lib.mkOption {
             type = lib.types.str;
@@ -66,10 +59,10 @@
   };
   config = {
     assertions = [
-      {
-        assertion = config.deploy.local == true -> config.deploy.targetHost == "";
-        message = "Only one of `deploy.local` and `deploy.targetHost` can be specified";
-      }
+      # {
+      #   assertion = config.deploy.targetHost == "" -> !config.deploy.buildOnRemote;
+      #   message = "When `deploy.targetHost` is empty, meaning deploying locally, deploy.buildOnRemote must not be true";
+      # }
       {
         assertion =
           !lib.elem config.channel [
