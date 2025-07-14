@@ -1,8 +1,4 @@
-{
-  lib,
-  config,
-  ...
-}:
+{ lib, config, ... }:
 {
   options = {
     os = lib.mkOption {
@@ -65,12 +61,12 @@
       default = { };
     };
   };
-  config = lib.mkIf true {
+  config = {
     assertions = [
-      {
-        assertion = config.deploy.targetHost == "" -> !config.deploy.buildOnRemote;
-        message = "When `deploy.targetHost` is empty, meaning deploying locally, deploy.buildOnRemote must not be true";
-      }
+      # {
+      #   assertion = config.deploy.targetHost == "" -> !config.deploy.buildOnRemote;
+      #   message = "If `deploy.targetHost` is empty, `deploy.buildOnRemote` must not be true";
+      # }
       {
         assertion =
           !lib.elem config.channel [

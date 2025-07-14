@@ -13,7 +13,6 @@ let
     joinPath
     optionalPath
     recursiveFilter
-    evalModulesAssertWarn
     ;
   publicDir = flake.outPath;
   privateDir = "${publicDir}/private";
@@ -378,36 +377,45 @@ let
       nodeDir = "nodes${lib.optionalString definedByGroup "/${lib.head parentNames}"}/${nodeName}";
 
       nodeValue =
-        builtins.foldl' (accu: { value, ... }: lib.recursiveUpdate accu value) { } valueLocs
-        // (
-          let
-            len = lib.length valueLocs;
-          in
-          evalModulesAssertWarn {
-            modules =
-              [
-                {
-                  imports = [ ./nodeModule.nix ];
-                  _module.check = false;
-                }
-              ]
-              ++ lib.imap0 (
-                i:
-                { value, loc }:
-                {
-                  _file = loc;
-                  config = lib.mkOverride (1000 + len - 1 - i) value;
-                }
-              ) valueLocs;
-          }
-        ).config
-        // {
-          type = "node";
-          name = nodeName;
-          parentGroups = parentNames;
-          groups = findAllGroupNames [ nodeName ];
-          inherit (configuration) config;
-        };
+        let
+          len = lib.length valueLocs;
+          config =
+            (lib.evalModules {
+              modules =
+                [
+                  {
+                    imports = [
+                      ./modules/assertions.nix
+                      ./modules/node.nix
+                    ];
+                    # Ignore config values without corresponding options
+                    _module.check = false;
+                  }
+                ]
+                ++ lib.imap0 (
+                  i:
+                  { value, loc }:
+                  {
+                    _file = loc;
+                    config = lib.mkOverride (1000 + len - 1 - i) value;
+                  }
+                ) valueLocs;
+            }).config;
+          v =
+            builtins.foldl' (accu: { value, ... }: lib.recursiveUpdate accu value) { } valueLocs
+            // lib.removeAttrs config [
+              "assertions"
+              "warnings"
+            ]
+            // {
+              type = "node";
+              name = nodeName;
+              parentGroups = parentNames;
+              groups = findAllGroupNames [ nodeName ];
+              inherit (configuration) config;
+            };
+        in
+        lib.asserts.checkAssertWarn config.assertions config.warnings v;
       valueLocs =
         let
           merged =
@@ -908,14 +916,21 @@ let
       inherit rawValue parentNames childNames;
     };
   nixverseConfig =
-    (evalModulesAssertWarn {
-      modules = [
-        {
-          imports = [ ./flakeModule.nix ];
-          config = outputs.nixverse or { };
-        }
-      ];
-    }).config;
+    let
+      config =
+        (lib.evalModules {
+          modules = [
+            {
+              imports = [
+                ./modules/assertions.nix
+                ./modules/flake.nix
+              ];
+              config = outputs.nixverse or { };
+            }
+          ];
+        }).config;
+    in
+    lib.asserts.checkAssertWarn config.assertions config.warnings config;
   recursiveFindFilesInNode =
     nodeName: fileName:
     lib.concatMap (
