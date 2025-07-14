@@ -360,8 +360,9 @@ deploy_node() {
 	local node_os=$3
 	local target_host=$4
 	local build_on_remote=$5
-	local use_remote_sudo=$6
-	local ssh_opts=$7
+	local use_substitutes=$6
+	local use_remote_sudo=$7
+	local ssh_opts=$8
 
 	case $node_os in
 	nixos)
