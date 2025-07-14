@@ -17,13 +17,17 @@
     deploy = lib.mkOption {
       type = lib.types.submodule {
         options = {
+          targetHost = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+          };
           buildOnRemote = lib.mkOption {
             type = lib.types.bool;
             default = false;
           };
-          targetHost = lib.mkOption {
-            type = lib.types.str;
-            default = "";
+          useSubstitutes = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
           };
           useRemoteSudo = lib.mkOption {
             type = lib.types.bool;
@@ -40,13 +44,17 @@
     install = lib.mkOption {
       type = lib.types.submodule {
         options = {
+          targetHost = lib.mkOption {
+            type = lib.types.str;
+            default = config.deploy.targetHost;
+          };
           buildOnRemote = lib.mkOption {
             type = lib.types.bool;
             default = config.deploy.buildOnRemote;
           };
-          targetHost = lib.mkOption {
-            type = lib.types.str;
-            default = config.deploy.targetHost;
+          useSubstitutes = lib.mkOption {
+            type = lib.types.bool;
+            default = config.deploy.useSubstitutes;
           };
           sshOpts = lib.mkOption {
             type = lib.types.listOf lib.types.nonEmptyStr;
@@ -57,12 +65,12 @@
       default = { };
     };
   };
-  config = {
+  config = lib.mkIf true {
     assertions = [
-      # {
-      #   assertion = config.deploy.targetHost == "" -> !config.deploy.buildOnRemote;
-      #   message = "When `deploy.targetHost` is empty, meaning deploying locally, deploy.buildOnRemote must not be true";
-      # }
+      {
+        assertion = config.deploy.targetHost == "" -> !config.deploy.buildOnRemote;
+        message = "When `deploy.targetHost` is empty, meaning deploying locally, deploy.buildOnRemote must not be true";
+      }
       {
         assertion =
           !lib.elem config.channel [

@@ -200,8 +200,9 @@ install_node() {
 	local node_dir=$3
 	local target_host=$4
 	local build_on_remote=$5
-	local ssh_host_key=$6
-	shift 6
+	local use_substitutes=$6
+	local ssh_host_key=$7
+	shift 7
 
 	local args=()
 	local sshOpt
@@ -213,6 +214,9 @@ install_node() {
 	else
 		args+=(--build-on local)
 	fi
+	if [[ -z $use_substitutes ]]; then
+		args+=(--no-substitute-on-destination)
+	fi
 
 	if [[ -n $ssh_host_key ]]; then
 		local tmpdir
@@ -220,10 +224,11 @@ install_node() {
 		# shellcheck disable=SC2064
 		trap "rm -rf '$tmpdir'" EXIT
 
-		d=$tmpdir/etc/ssh
-		mkdir -p "$d"
-		cp -p "$flake/build/$node_dir/ssh_host_ed25519_key" "$d"
-		cp -p "$ssh_host_key.pub" "$d"
+		mkdir -p "$tmpdir/etc/ssh"
+		cp -p \
+			"$flake/build/$node_dir/ssh_host_ed25519_key" \
+			"$ssh_host_key.pub" \
+			"$tmpdir/etc/ssh"
 		args+=(--extra-files "$tmpdir")
 	fi
 
@@ -369,6 +374,9 @@ deploy_node() {
 		fi
 		if [[ -n $use_remote_sudo ]]; then
 			args+=(--use-remote-sudo)
+		fi
+		if [[ -n $use_substitutes ]]; then
+			args+=(--use-substitutes)
 		fi
 		NIX_SSHOPTS=$ssh_opts nixos-rebuild switch \
 			--flake "$flake?submodules=1#$node_name" \

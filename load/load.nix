@@ -97,7 +97,7 @@ let
           assert lib.assertMsg (node.diskConfigFiles != [ ]) "Missing disk-config.nix for node ${nodeName}";
           {
             n = nodeName;
-            c = "install_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir} ${lib.escapeShellArg node.value.install.targetHost} ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.sshHostKey} ${
+            c = "install_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.dir} ${lib.escapeShellArg node.value.install.targetHost} ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.value.install.useSubstitutes} ${lib.escapeShellArg node.sshHostKey} ${
               toString (map (opt: lib.escapeShellArg opt) node.value.deploy.sshOpts)
             }";
           }
@@ -134,7 +134,7 @@ let
             "Deploying multiple nodes where some of them are local is not allowed, deploy the local nodes individually.";
           {
             n = nodeName;
-            c = "deploy_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.value.os} ${lib.escapeShellArg node.value.deploy.targetHost} ${lib.escapeShellArg node.value.install.buildOnRemote} ${lib.escapeShellArg node.value.deploy.useRemoteSudo} ${
+            c = "deploy_node ${lib.escapeShellArg flakeSrc} ${lib.escapeShellArg nodeName} ${lib.escapeShellArg node.value.os} ${lib.escapeShellArg node.value.deploy.targetHost} ${lib.escapeShellArg node.value.deploy.buildOnRemote} ${lib.escapeShellArg node.value.deploy.useSubstitutes} ${lib.escapeShellArg node.value.deploy.useRemoteSudo} ${
               lib.escapeShellArg (map (opt: "-o ${lib.escapeShellArg opt}") node.value.deploy.sshOpts)
             }";
           }
