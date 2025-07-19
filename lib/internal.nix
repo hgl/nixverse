@@ -47,22 +47,4 @@
       lib.concatStrings (map (part: if part == "" then "" else "/${part}") (lib.drop 1 parts))
     }";
   optionalPath = path: if lib.pathExists path then [ path ] else [ ];
-  recursiveFilter =
-    pred: v:
-    if lib.isAttrs v then
-      lib.concatMapAttrs (
-        name: subv:
-        if pred name subv then
-          {
-            ${name} = lib'.internal.recursiveFilter pred subv;
-          }
-        else
-          { }
-      ) v
-    else if lib.isList v then
-      lib.concatLists (
-        lib.imap0 (i: subv: if pred i subv then [ (lib'.internal.recursiveFilter pred subv) ] else [ ]) v
-      )
-    else
-      v;
 }

@@ -65,13 +65,18 @@ Options:
 EOF
 }
 
-cmd_help_node_value() {
+cmd_help_eval() {
 	cat <<EOF
-Usage: nixverse node value [<option>...] <node>...
+Usage: nixverse eval [<option>...] <nix expression>
 
-Show nodes or groups' meta configurations.
+Evaluate a Nix expression, with these variables available:
+  lib           nixpkgs lib
+  lib'          your custom lib
+  nodes         all nodes
 
 Options:
+  --raw         print in raw format (default)
+  --json        print in JSON format
   -h, --help    show this help
 EOF
 }
@@ -188,7 +193,7 @@ cmd_node_install() {
 	flake=$(find_flake)
 	run_make "$flake" "$@"
 	local json
-	json=$(eval_nixverse_nix json "$flake" "getNodeInstallJobs (lib.splitString \" \" \"$*\")")
+	json=$(nixeval_nixverse json "$flake" "getNodeInstallJobs (lib.splitString \" \" \"$*\")")
 	parallel "$parallel" "$json"
 }
 
@@ -281,7 +286,7 @@ cmd_node_build() {
 	flake=$(find_flake)
 	run_make "$flake" "$@"
 	local json
-	json=$(eval_nixverse_nix json "$flake" "getNodeBuildJobs (lib.splitString \" \" \"$*\")")
+	json=$(nixeval_nixverse json "$flake" "getNodeBuildJobs (lib.splitString \" \" \"$*\")")
 	parallel "$parallel" "$json"
 }
 
@@ -348,7 +353,7 @@ cmd_node_deploy() {
 	flake=$(find_flake)
 	run_make "$flake" "$@"
 	local json
-	json=$(eval_nixverse_nix json "$flake" "getNodeDeployJobs (lib.splitString \" \" \"$*\")")
+	json=$(nixeval_nixverse json "$flake" "getNodeDeployJobs (lib.splitString \" \" \"$*\")")
 	parallel "$parallel" "$json"
 }
 
@@ -398,14 +403,23 @@ deploy_node() {
 }
 export -f deploy_node
 
-cmd_node_value() {
+cmd_eval() {
 	local args
-	args=$(getopt -n nixverse -o 'h' --long 'help' -- "$@")
+	args=$(getopt -n nixverse -o 'h' --long 'help,raw,json' -- "$@")
 	eval set -- "$args"
 	unset args
 
+	local format=raw
 	while true; do
 		case $1 in
+		--raw)
+			format=raw
+			shift
+			;;
+		--json)
+			format=json
+			shift
+			;;
 		-h | --help)
 			cmd help node value
 			return
@@ -429,7 +443,19 @@ cmd_node_value() {
 	local flake
 	flake=$(find_flake)
 
-	eval_nixverse_nix json "$flake" "getNodeValueData (lib.splitString \" \" \"$*\")"
+	local expr
+	expr=$(
+		cat <<EOF
+let
+  inherit (
+    (flake.nixverse "$flake").evalData
+  ) lib lib' nodes;
+in
+${@: -1}
+EOF
+	)
+
+	nixeval "$format" "$flake" "$expr"
 }
 
 cmd_secrets() {
@@ -443,7 +469,7 @@ cmd_secrets() {
 	encrypt | decrypt)
 		shift
 		local args
-		args=$(getopt -n nixverse -o 'hifn:m' --long 'help,in-place,force,use-node-key:,use-master-key' -- "$@")
+		args=$(getopt -n nixverse -o 'hifn:m:' --long 'help,in-place,force,use-node-key:,use-master-key:' -- "$@")
 		eval set -- "$args"
 		unset args
 
@@ -661,7 +687,7 @@ EOF
 			build/secrets.yaml
 		local entity_names
 		entity_names=$(yq --raw-output 'keys | join(" ")' build/secrets.yaml)
-		eval_nixverse_nix raw "$flake" "getSecretsMakefileVars (lib.splitString \" \" \"$entity_names\")" |
+		nixeval_nixverse raw "$flake" "getSecretsMakefileVars (lib.splitString \" \" \"$entity_names\")" |
 			make -f - -f @out@/lib/nixverse/secrets.mk
 		sops --encrypt --indent 2 --output "$sops_target_file" build/secrets.yaml
 		popd >/dev/null
@@ -819,7 +845,7 @@ EOF
 	popd >/dev/null
 }
 
-eval_nixverse_nix() {
+nixeval() {
 	local format=$1
 	local flake=$2
 	local expr=$3
@@ -837,9 +863,9 @@ eval_nixverse_nix() {
 
 	expr=$(
 		cat <<EOF
-args:
-  if args ? nixverse then
-  	with (args.nixverse "$flake"); $expr
+flake:
+  if builtins.isFunction flake.nixverse or null then
+  	($expr)
   else
   	builtins.abort "not inside a flake directory with nixverse loaded"
 EOF
@@ -850,6 +876,14 @@ EOF
 		--show-trace \
 		"${args[@]}" \
 		"$flake?submodules=1#."
+}
+
+nixeval_nixverse() {
+	local format=$1
+	local flake=$2
+	local expr=$4
+
+	nixeval "$format" "$flake" "with flake.nixverse \"$flake\"; $expr"
 }
 
 nix() {
@@ -888,10 +922,10 @@ run_make() {
 	fi
 
 	local mk
-	mk=$(eval_nixverse_nix raw "$flake" nodesMakefileVars)
+	mk=$(nixeval_nixverse raw "$flake" nodesMakefileVars)
 
 	local targets
-	targets=$(eval_nixverse_nix raw "$flake" "getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
+	targets=$(nixeval_nixverse raw "$flake" "getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
 	local nproc
 	nproc=$(nproc)
 	# shellcheck disable=SC2086

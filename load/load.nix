@@ -12,12 +12,24 @@ let
     importDirAttrs
     joinPath
     optionalPath
-    recursiveFilter
     ;
   publicDir = flake.outPath;
   privateDir = "${publicDir}/private";
   rawPkgs = importDirAttrs "${publicDir}/pkgs" // importDirAttrs "${privateDir}/pkgs";
+  userLibArgs =
+    assert lib.assertMsg (
+      flake.inputs ? nixpkgs-unstable
+    ) "Missing required flake input nixpkgs-unstable";
+    {
+      inherit (flake.inputs.nixpkgs-unstable) lib;
+      lib' = userLib;
+      inherit (flake) inputs;
+    };
+  userLib = lib.recursiveUpdate (call (importDirOrFile "${publicDir}/lib") userLibArgs) (
+    call (importDirOrFile "${privateDir}/lib") userLibArgs
+  );
   final = {
+    lib = userLib;
     nixosModules =
       importDirAttrs "${publicDir}/modules/nixos"
       // importDirAttrs "${privateDir}/modules/nixos";
@@ -138,35 +150,27 @@ let
             }";
           }
         ) nodeNames;
-      getNodeValueData =
-        entityNames:
-        let
-          inherit (segregateEntityNames (validateEntityNames entityNames)) nodes groups;
-        in
-        lib.mapAttrs (
-          groupName: _:
-          let
-            group = final.entities.${groupName};
-          in
+      evalData = {
+        inherit (userLibArgs) lib lib';
+        nodes = lib.concatMapAttrs (
+          entityName: entity:
           {
-            inherit (group) type;
-            name = groupName;
-            parentGroups = group.parentNames;
-            groups = findAllGroupNames [ groupName ];
-            children = group.childNames;
+            node = {
+              ${entityName} = entity.value;
+            };
+            group = {
+              ${entityName} = {
+                inherit (entity) type;
+                name = entityName;
+                parentGroups = entity.parentNames;
+                groups = findAllGroupNames [ entityName ];
+                children = entity.childNames;
+              };
+            };
           }
-        ) groups
-        // lib.mapAttrs (
-          nodeName: _:
-          let
-            node = final.entities.${nodeName};
-          in
-          recursiveFilter (_: v: !lib.isFunction v) (
-            lib.removeAttrs node.value [
-              "config"
-            ]
-          )
-        ) nodes;
+          .${entity.type}
+        ) final.entities;
+      };
       getSecretsMakefileVars =
         entityNames:
         let
@@ -692,9 +696,14 @@ let
           _module.args =
             let
               inherit (config.nixpkgs.hostPlatform) system;
-              optionalPkgsUnstableAttr = lib.optionalAttrs (channel != "unstable" && inputs ? nixpkgs-unstable) {
-                pkgs-unstable = inputs.nixpkgs-unstable.legacyPackages.${system};
-              };
+              optionalPkgsUnstableAttr = lib.optionalAttrs (channel != "unstable") (
+                assert lib.assertMsg (
+                  flake.inputs ? nixpkgs-unstable
+                ) "Missing required flake input nixpkgs-unstable";
+                {
+                  pkgs-unstable = flake.inputs.nixpkgs-unstable.legacyPackages.${system};
+                }
+              );
               callPackage = pkgs.newScope (
                 optionalPkgsUnstableAttr
                 // {
