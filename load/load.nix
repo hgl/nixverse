@@ -681,6 +681,31 @@ let
         }
         .${entity.type}
       ) final.entities;
+      baseModule =
+        {
+          config,
+          pkgs,
+          lib,
+          ...
+        }:
+        {
+          _module.args =
+            let
+              inherit (config.nixpkgs.hostPlatform) system;
+              optionalPkgsUnstableAttr = lib.optionalAttrs (channel != "unstable" && inputs ? nixpkgs-unstable) {
+                pkgs-unstable = inputs.nixpkgs-unstable.legacyPackages.${system};
+              };
+              callPackage = pkgs.newScope (
+                optionalPkgsUnstableAttr
+                // {
+                  inherit pkgs';
+                }
+              );
+              pkgs' = lib.mapAttrs (_: v: callPackage v { }) rawPkgs;
+            in
+            { inherit pkgs'; } // optionalPkgsUnstableAttr;
+          networking.hostName = lib.mkDefault nodes.current.name;
+        };
       configuration = mkConfiguration {
         specialArgs =
           {
@@ -697,38 +722,8 @@ let
             privatePath = privateDir;
           };
         modules =
-          [
-            (
-              {
-                config,
-                pkgs,
-                lib,
-                ...
-              }:
-              {
-                imports = configurationFiles;
-                _module.args =
-                  let
-                    inherit (config.nixpkgs.hostPlatform) system;
-                    optionalPkgsUnstableAttr = lib.optionalAttrs (channel != "unstable" && inputs ? nixpkgs-unstable) {
-                      pkgs-unstable = inputs.nixpkgs-unstable.legacyPackages.${system};
-                    };
-                    callPackage = pkgs.newScope (
-                      optionalPkgsUnstableAttr
-                      // {
-                        inherit pkgs';
-                      }
-                    );
-                    # TODO: support node-level packages
-                    pkgs' =
-                      lib.removeAttrs self.packages.${system} [ "default" ]
-                      // lib.mapAttrs (_: v: callPackage v { }) rawPkgs;
-                  in
-                  { inherit pkgs'; } // optionalPkgsUnstableAttr;
-                networking.hostName = lib.mkDefault nodes.current.name;
-              }
-            )
-          ]
+          [ baseModule ]
+          ++ configurationFiles
           ++ lib.optional (diskConfigFiles != [ ]) (
             assert lib.assertMsg (inputs ? disko)
               "Missing flake input disko-${channel}${
