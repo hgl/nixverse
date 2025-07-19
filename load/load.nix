@@ -88,11 +88,15 @@ let
         '';
       getNodesMakefileTargets =
         entityNames:
-        toString (map (nodeName: "nodes/${nodeName}") (findNodeNames (validateEntityNames entityNames)));
+        toString (
+          map (nodeName: "nodes/${nodeName}") (
+            recursiveFindDescendantNodeNames (validateEntityNames entityNames)
+          )
+        );
       getNodeInstallJobs =
         entityNames:
         let
-          nodeNames = findNodeNames (validateEntityNames entityNames);
+          nodeNames = recursiveFindDescendantNodeNames (validateEntityNames entityNames);
         in
         map (
           nodeName:
@@ -116,7 +120,7 @@ let
       getNodeBuildJobs =
         entityNames:
         let
-          nodeNames = findNodeNames (validateEntityNames entityNames);
+          nodeNames = recursiveFindDescendantNodeNames (validateEntityNames entityNames);
         in
         lib.concatMap (
           nodeName:
@@ -133,7 +137,7 @@ let
       getNodeDeployJobs =
         entityNames:
         let
-          nodeNames = findNodeNames (validateEntityNames entityNames);
+          nodeNames = recursiveFindDescendantNodeNames (validateEntityNames entityNames);
           numNode = lib.length nodeNames;
         in
         map (
@@ -152,29 +156,12 @@ let
         ) nodeNames;
       evalData = {
         inherit (userLibArgs) lib lib';
-        nodes = lib.concatMapAttrs (
-          entityName: entity:
-          {
-            node = {
-              ${entityName} = entity.value;
-            };
-            group = {
-              ${entityName} = {
-                inherit (entity) type;
-                name = entityName;
-                parentGroups = entity.parentNames;
-                groups = findAllGroupNames [ entityName ];
-                children = entity.childNames;
-              };
-            };
-          }
-          .${entity.type}
-        ) final.entities;
+        nodes = lib.mapAttrs (_: entity: entity.value) final.entities;
       };
       getSecretsMakefileVars =
         entityNames:
         let
-          nodeNames = findNodeNames entityNames;
+          nodeNames = recursiveFindDescendantNodeNames entityNames;
         in
         ''
           node_names := ${toString nodeNames}
@@ -674,13 +661,7 @@ let
               current = entity.value;
             };
           group = {
-            ${entityName} = {
-              inherit (entity) type;
-              name = entityName;
-              parentGroups = entity.parentNames;
-              groups = findAllGroupNames [ entityName ];
-              children = entity.childNames;
-            };
+            ${entityName} = entity.value;
           };
         }
         .${entity.type}
@@ -918,6 +899,15 @@ let
     {
       type = "group";
       inherit rawValue parentNames childNames;
+      value = {
+        type = "group";
+        name = groupName;
+        parentGroups = parentNames;
+        groups = findAllGroupNames [ groupName ];
+        children = childNames;
+        childNodes = lib.filter (entityName: final.entities.${entityName}.type == "node") childNames;
+        nodes = recursiveFindDescendantNodeNames childNames;
+      };
     };
   nixverseConfig =
     let
@@ -987,7 +977,7 @@ let
       if lib.hasAttr entityName final.entities then true else throw "Unknown node ${entityName}"
     ) names;
     names;
-  findNodeNames =
+  recursiveFindDescendantNodeNames =
     entityNames:
     let
       find =

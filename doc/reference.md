@@ -472,6 +472,12 @@ Read Only:
 - `children`
   - The group's child node or group names.
   - **Type**: list of strings
+- `childNodes`
+  - The group's child node names.
+  - **Type**: list of strings
+- `nodes`
+  - The group's descendant node names.
+  - **Type**: list of strings
 - `parentGroups`
   - The group's parent group names.
   - **Type**: list of strings
