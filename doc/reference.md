@@ -174,11 +174,11 @@ Read Only:
   - The node's resolved NixOS or nix-darwin configuration value.
   - **Type**: attribute set
 - `parentGroups`
-  - The node's parent group names.
-  - **Type**: list of strings
+  - The node's parent groups.
+  - **Type**: attribute set of groups
 - `groups`
-  - The node's ancestor group names.
-  - **Type**: list of strings
+  - The node's ancestor groups.
+  - **Type**: attribute set of groups
 
 Optional
 
@@ -470,20 +470,20 @@ Read Only:
 - `type`
   - **Type**: `"group"`
 - `children`
-  - The group's child node or group names.
-  - **Type**: list of strings
+  - The group's child node or groups.
+  - **Type**: attribute set of nodes or groups
 - `childNodes`
-  - The group's child node names.
-  - **Type**: list of strings
+  - The group's child nodes.
+  - **Type**: attribute set of nodes
 - `nodes`
-  - The group's descendant node names.
-  - **Type**: list of strings
+  - The group's descendant nodes.
+  - **Type**: attribute set of nodes
 - `parentGroups`
-  - The group's parent group names.
-  - **Type**: list of strings
+  - The group's parent groups.
+  - **Type**: attribute set of groups
 - `groups`
-  - The group's ancestor group names.
-  - **Type**: list of strings
+  - The group's ancestor groups.
+  - **Type**: attribute set of groups
 
 ### Auto-imported Group Files
 

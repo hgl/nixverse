@@ -401,8 +401,12 @@ let
             // {
               type = "node";
               name = nodeName;
-              parentGroups = parentNames;
-              groups = findAllGroupNames [ nodeName ];
+              parentGroups = lib'.mapListToAttrs (
+                name: lib.nameValuePair name final.entities.${name}.value
+              ) parentNames;
+              groups = lib'.mapListToAttrs (
+                name: lib.nameValuePair name final.entities.${name}.value
+              ) (findAllGroupNames [ nodeName ]);
               inherit (configuration) config;
             };
         in
@@ -902,11 +906,21 @@ let
       value = {
         type = "group";
         name = groupName;
-        parentGroups = parentNames;
-        groups = findAllGroupNames [ groupName ];
-        children = childNames;
-        childNodes = lib.filter (entityName: final.entities.${entityName}.type == "node") childNames;
-        nodes = recursiveFindDescendantNodeNames childNames;
+        parentGroups = lib'.mapListToAttrs (
+          name: lib.nameValuePair name final.entities.${name}.value
+        ) parentNames;
+        groups = lib'.mapListToAttrs (
+          name: lib.nameValuePair name final.entities.${name}.value
+        ) (findAllGroupNames [ groupName ]);
+        children = lib'.mapListToAttrs (
+          name: lib.nameValuePair name final.entities.${name}.value
+        ) childNames;
+        childNodes = lib'.mapListToAttrs (name: lib.nameValuePair name final.entities.${name}.value) (
+          lib.filter (entityName: final.entities.${entityName}.type == "node") childNames
+        );
+        nodes = lib'.mapListToAttrs (name: lib.nameValuePair name final.entities.${name}.value) (
+          recursiveFindDescendantNodeNames childNames
+        );
       };
     };
   nixverseConfig =
