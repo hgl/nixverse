@@ -881,7 +881,7 @@ EOF
 nixeval_nixverse() {
 	local format=$1
 	local flake=$2
-	local expr=$4
+	local expr=$3
 
 	nixeval "$format" "$flake" "with flake.nixverse \"$flake\"; $expr"
 }
