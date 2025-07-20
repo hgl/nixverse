@@ -299,10 +299,10 @@ build_node() {
 
 	case $node_os in
 	nixos)
-		nix build --no-link "$flake?submodules=1#nixosConfigurations.$node_name.config.system.build.toplevel"
+		nix build --show-trace --no-link "$flake?submodules=1#nixosConfigurations.$node_name.config.system.build.toplevel"
 		;;
 	darwin)
-		nix build --no-link "$flake?submodules=1#darwinConfigurations.$node_name.system"
+		nix build --show-trace --no-link "$flake?submodules=1#darwinConfigurations.$node_name.system"
 		;;
 	*)
 		echo >&2 "Unknown node OS: $node_os"
@@ -421,7 +421,7 @@ cmd_eval() {
 			shift
 			;;
 		-h | --help)
-			cmd help node value
+			cmd help eval
 			return
 			;;
 		--)
@@ -436,7 +436,7 @@ cmd_eval() {
 	done
 
 	if [[ $# = 0 ]]; then
-		cmd help node value >&2
+		cmd help eval >&2
 		return 1
 	fi
 
