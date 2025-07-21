@@ -3,7 +3,6 @@
   lib',
 }:
 {
-
   importDirOrFile =
     base: name: default:
     (lib'.internal.importDirAttrs base).${name} or default;
@@ -41,10 +40,5 @@
       f (if params == { } then args else lib.intersectAttrs params args)
     else
       f;
-  joinPath =
-    parts:
-    "${lib.head parts}${
-      lib.concatStrings (map (part: if part == "" then "" else "/${part}") (lib.drop 1 parts))
-    }";
   optionalPath = path: if lib.pathExists path then [ path ] else [ ];
 }

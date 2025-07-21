@@ -6,7 +6,6 @@ Table of Contents
    1. [From Scratch](#from-scratch)
    1. [Migrating from an Existing `flake.nix`](#migrating-from-an-existing-flakenix)
    1. [Entrypoint](#entrypoint)
-   1. [Nixverse Options](#nixverse-options)
 1. [Defining Nodes](#defining-nodes)
    1. [Node Meta Configuration](#node-meta-configuration)
    1. [The `nodes` Argument](#the-nodes-argument)
@@ -73,15 +72,6 @@ The `nixverse.load` function serves as the entrypoint for Nixverse. It requires 
 
 1. `self`: The reference to your flake's final outputs, passed from the outputs attribute.
 2. **Custom Flake Outputs**: An attribute set containing your custom flake outputs.
-
-### Nixverse Options
-
-The `nixverse` output can be specified to configurate Nixverse. It's an attribute set that defines the following options:
-
-- `inheritLib`
-  - Determines whether the `lib'` argument (see [Defining Custom Lib Functions](#defining-custom-lib-functions)) also contains functions from input `nixverse.lib`.
-  - **Type**: boolean
-  - **Default**: `true`
 
 ## Defining Nodes
 
@@ -505,23 +495,13 @@ The previous example configuration for web servers can be simplified as:
 
 ## Defining Custom Lib Functions
 
-You can create a `lib.nix` or `lib/default.nix` file at various places that contains an attribute set or a function returning an attribute set, and their deeply merged value can be accessed in `node.nix`, `group.nix` or configuration files from the `lib'` argument.
+The custom lib, available to configuration files from the `lib'` argument, is defined at `lib/default.nix` or `lib.nix`.
 
-Files under `nodes/<node>`, `nodes/<group>/common` or `nodes/<group>/<node>` have access to lib functions defined from
+If the file evaluates to a function, the following arguments are available:
 
-- The flake directory.
-- The node's parent and ancestor groups' `common` directories.
-- The node's own directory.
-
-With latter ones overriding preceding ones.
-
-If the file contains a function, the following arguments are available:
-
-- `lib`: `nixpkgs`' lib functions. Which `nixpkgs` input gets used is determined by the node accessing the `lib'` argument.
-- `lib'`: the custom lib itself. Only its own lib functions and those defined in parent directories are available.
-- `inputs`: same as the node's `inputs` argument. The input names are determined by the node accessing the `lib'` argument.
-
-The `lib'` argument in the flake directory's lib file by default refer to itself, but if the `inheritLib` [Nixverse option](#nixverse-options) is `true`, it also contains [Nixverse's lib functions](../lib/default.nix).
+- `lib`: lib from the `nixpkgs-unstable`' flake input.
+- `lib'`: the custom lib itself.
+- `inputs`: your flake inputs. Notice unlike the `inputs` argument offers to modules, the flake inputs are not renamed.
 
 Examples:
 
@@ -530,16 +510,12 @@ Examples:
 {
   plusOne = a: a + 1;
 }
-# nodes/hgl/lib.nix
-{ lib' }: {
-  plusTwo = a: (lib'.plusOne a) + 1;
-}
 ```
 
 ```nix
 # nodes/hgl/configuration.nix
 { lib', ... }: {
-  # lib'.plusTwo 1 equals 3 here
+  # lib'.plusOne 1 equals 2 here
 }
 ```
 

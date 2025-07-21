@@ -10,7 +10,6 @@ let
     call
     importDirOrFile
     importDirAttrs
-    joinPath
     optionalPath
     ;
   publicDir = flake.outPath;
@@ -25,8 +24,8 @@ let
       lib' = userLib;
       inherit (flake) inputs;
     };
-  userLib = lib.recursiveUpdate (call (importDirOrFile "${publicDir}/lib") userLibArgs) (
-    call (importDirOrFile "${privateDir}/lib") userLibArgs
+  userLib = lib.recursiveUpdate (call (importDirOrFile publicDir "lib" { }) userLibArgs) (
+    call (importDirOrFile privateDir "lib" { }) userLibArgs
   );
   final = {
     lib = userLib;
@@ -578,7 +577,7 @@ let
             {
               inherit (inputs.nixpkgs) lib;
               inherit inputs nodes;
-              lib' = nodeLib;
+              lib' = final.lib;
             }
             // extraArgs
           );
@@ -613,47 +612,6 @@ let
             lib.optionalString (channel != "unstable") "-${os}"
           }, required by node ${nodeName}";
         v;
-      nodeLib =
-        if definedByGroup then
-          parentsLib
-        else
-          lib.recursiveUpdate parentsLib (loadLib "nodes/${nodeName}" { lib' = nodeLib; });
-      parentsLib = builtins.foldl' (
-        accu:
-        { parentName, entityName }:
-        let
-          commonLib = lib.recursiveUpdate accu (loadLib "nodes/${parentName}/common" { lib' = commonLib; });
-          childLib = lib.recursiveUpdate commonLib (
-            loadLib "nodes/${parentName}/${entityName}" { lib' = childLib; }
-          );
-        in
-        childLib
-      ) topLib (recursiveFindAncestorNames nodeName);
-      topLib =
-        let
-          v = loadLib "" { lib' = topLib; };
-        in
-        if nixverseConfig.inheritLib then
-          lib.recursiveUpdate (lib.removeAttrs lib' [ "internal" ]) v
-        else
-          v;
-      loadLib =
-        subdir: extraArgs:
-        let
-          args = {
-            inherit (inputs.nixpkgs) lib;
-            inherit inputs;
-          } // extraArgs;
-          libPublic = call (importDirOrFile (joinPath [
-            publicDir
-            subdir
-          ]) "lib" { }) args;
-          libPrivate = call (importDirOrFile (joinPath [
-            privateDir
-            subdir
-          ]) "lib" { }) args;
-        in
-        lib.recursiveUpdate libPublic libPrivate;
       nodes = lib.concatMapAttrs (
         entityName: entity:
         {
@@ -704,7 +662,7 @@ let
         specialArgs =
           {
             inherit inputs nodes;
-            lib' = nodeLib;
+            lib' = final.lib;
             modules' =
               {
                 nixos = final.nixosModules;
@@ -923,22 +881,6 @@ let
         );
       };
     };
-  nixverseConfig =
-    let
-      config =
-        (lib.evalModules {
-          modules = [
-            {
-              imports = [
-                ./modules/assertions.nix
-                ./modules/flake.nix
-              ];
-              config = outputs.nixverse or { };
-            }
-          ];
-        }).config;
-    in
-    lib.asserts.checkAssertWarn config.assertions config.warnings config;
   recursiveFindFilesInNode =
     nodeName: fileName:
     lib.concatMap (
