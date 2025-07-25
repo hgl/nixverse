@@ -3,42 +3,69 @@
   lib',
 }:
 {
-  importDirOrFile =
-    base: name: default:
-    (lib'.internal.importDirAttrs base).${name} or default;
-  importDirAttrs =
-    base:
-    if lib.pathExists base then
-      lib.concatMapAttrs (
-        name: v:
-        if v == "directory" then
-          if lib.pathExists "${base}/${name}/default.nix" then
-            {
-              ${name} = import "${base}/${name}";
-            }
-          else
-            { }
-        else
+  call = f: args: if lib.isFunction f then f args else f;
+  optionalPath = path: lib.optional (lib.pathExists path) path;
+  optionalImportPath =
+    dir: name:
+    let
+      paths = lib'.optionalPath "${dir}/${name}/default.nix" ++ lib'.optionalPath "${dir}/${name}.nix";
+      n = lib.length paths;
+      path = lib.head paths;
+    in
+    assert lib.assertMsg (n <= 1) "Both ${path} and ${lib.elemAt paths 1} exist, only one is allowed";
+    lib.optional (n != 0) path;
+  dirEntryImportPaths =
+    dirs: names:
+    lib.zipAttrsWith (name: paths: lib.concatLists paths) (
+      lib.concatMap (
+        dir:
+        map (name: {
+          ${name} = lib'.optionalImportPath dir name;
+        }) names
+      ) dirs
+    );
+  allDirEntryImportPaths =
+    dirs:
+    lib.zipAttrs (
+      lib.concatMap (
+        dir:
+        lib.optional (lib.pathExists dir) (
           let
-            n = lib.removeSuffix ".nix" name;
+            attrs = lib.zipAttrs (
+              lib'.concatMapAttrsToList (
+                name: type:
+                let
+                  basename = lib.removeSuffix ".nix" name;
+                  defaultPath = "${dir}/${name}/default.nix";
+                in
+                if basename != name then
+                  [
+                    {
+                      ${basename} = "${dir}/${name}";
+                    }
+                  ]
+                else if lib.pathExists defaultPath then
+                  [
+                    {
+                      ${name} = defaultPath;
+                    }
+                  ]
+                else
+                  [ ]
+              ) (builtins.readDir dir)
+            );
           in
-          if n != name then
-            {
-              ${n} = import "${base}/${name}";
-            }
-          else
-            { }
-      ) (builtins.readDir base)
-    else
-      { };
-  call =
-    f: args:
-    if lib.isFunction f then
-      let
-        params = lib.functionArgs f;
-      in
-      f (if params == { } then args else lib.intersectAttrs params args)
-    else
-      f;
-  optionalPath = path: if lib.pathExists path then [ path ] else [ ];
+          lib.mapAttrs (
+            name: paths:
+            let
+              path = lib.head paths;
+            in
+            assert lib.assertMsg (
+              lib.length paths == 1
+            ) "Both ${path} and ${lib.elemAt paths 1} exist, only one is allowed";
+            path
+          ) attrs
+        )
+      ) dirs
+    );
 }

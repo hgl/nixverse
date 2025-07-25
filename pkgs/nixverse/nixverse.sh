@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 set -euo pipefail
 
-PATH=@path@:$PATH
+export PATH=@path@:$PATH
 default_parallel=10
 
 cmd_help() {
@@ -32,13 +32,17 @@ Manage nodes.
 Commands:
   install      install NixOS to nodes
   deploy       manage nodes
-  value        show nodes or groups' meta configurations
+  eval         eval a nix expression against nodes
 
 Use "nixverse node <command> --help" for more information about a command.
 EOF
 	else
 		cmd help node "$@"
 	fi
+}
+
+cmd_node() {
+	cmd node "$@"
 }
 
 cmd_help_node_install() {
@@ -51,105 +55,6 @@ Options:
   -p, --parallel <num>      number of nodes to install in parallel (default: 10)
   -h, --help                show this help
 EOF
-}
-
-cmd_help_node_deploy() {
-	cat <<EOF
-Usage: nixverse node deploy [<option>...] <node>...
-
-Deploy one or more nodes.
-
-Options:
-  -p, --parallel <num>      number of nodes to deploy in parallel (default: 10)
-  -h, --help                show this help
-EOF
-}
-
-cmd_help_eval() {
-	cat <<EOF
-Usage: nixverse eval [<option>...] <nix expression>
-
-Evaluate a Nix expression, with these variables available:
-  lib           nixpkgs lib
-  lib'          your custom lib
-  nodes         all nodes
-
-Options:
-  --raw         print in raw format (default)
-  --json        print in JSON format
-  -h, --help    show this help
-EOF
-}
-
-cmd_help_secrets() {
-	if [[ -z ${1-} ]]; then
-		cat <<EOF
-Usage: nixverse secrets <command> [<argument>...]
-
-Manage secrets
-
-Commands:
-  edit         edit an encrytped file
-  encrypt      encrypt a file
-  decrypt      decrypt a file
-
-Use "nixverse secrets <command> --help" for more information about a command.
-EOF
-	else
-		cmd help secrets "$@"
-	fi
-}
-
-cmd_help_secrets_edit() {
-	cat <<EOF
-Usage: nixverse secrets edit [<option>...] [<file>]
-
-Edit an encrytped file.
-With no <file>, edit top secrets.yaml.
-
-Options:
-  -h, --help    show this help
-EOF
-}
-
-cmd_help_secrets_encrypt() {
-	cat <<EOF
-Usage: nixverse secrets encrypt [<option>...] [<file>] [<output>]
-
-Encrypt a file.
-With no <file> or <file> is -, encrypt standard input.
-With no <output> or <output> is -, output to standard output.
-
-Options:
-  -i, --in-place      encrypt the file in-place
-  -h, --help          show this help
-EOF
-}
-
-cmd_help_secrets_decrypt() {
-	cat <<EOF
-Usage: nixverse secrets decrypt [<option>...] [<file>] [<output>]
-
-Decrypt a file.
-With no <file> or <file> is -, decrypt standard input.
-With no <output> or <output> is -, output to standard output.
-
-Options:
-  -i, --in-place      decrypt the file in-place
-  -h, --help          show this help
-EOF
-}
-
-cmd_help_help() {
-	cat <<EOF
-Usage: nixverse help <command>
-
-Show help for the command.
-EOF
-}
-
-cmd_node() {
-	cmd node "$@"
 }
 
 cmd_node_install() {
@@ -191,59 +96,47 @@ cmd_node_install() {
 
 	local flake
 	flake=$(find_flake)
-	run_make "$flake" "$@"
-	local json
-	json=$(nixeval_nixverse json "$flake" "getNodeInstallJobs (lib.splitString \" \" \"$*\")")
-	parallel "$parallel" "$json"
+	make_flake "$flake" "$@"
+	parallel-run "$parallel" <(
+		eval_nixverse "$flake" "$@" <<EOF
+builtins.toJSON (map (
+  nodeName:
+  let
+    node = entities.\${nodeName};
+    buildOn = "--build-on \${if node.install.buildOnRemote then "remote" else "local"}";
+    useSubstitutes = lib.optionalString (!node.install.useSubstitutes) "--no-substitute-on-destination";
+    extraFiles = lib.optionalString (node.sshHostKeyPath != null) "--extra-files \\"\$tmpdir\\"";
+    cpFiles = lib.optionals (node.sshHostKeyPath != null) ''
+      tmpdir=\$(mktemp --directory)
+      trap "rm -rf '\$tmpdir'" EXIT
+      mkdir -p "\$tmpdir/etc/ssh"
+      cp -p '$flake/build/\${node.dir}/ssh_host_ed25519_key' '\${node.sshHostKeyPath}.pub' "\$tmpdir/etc/ssh"
+    '';
+  in
+  assert lib.assertMsg (
+    node.os != "darwin"
+  ) "Deploy to the darwin node \${nodeName} directlt to install nix-darwin";
+  assert lib.assertMsg (
+    node.install.targetHost != null
+  ) "Missing meta configuration install.targetHost for node \${nodeName}";
+  assert lib.assertMsg (
+    node.diskConfigPaths != [ ]
+  ) "Missing disk-config.nix for node \${nodeName}";
+  {
+    name = nodeName;
+    command = ''
+      set -e
+      \${cpFiles}
+      nixos-anywhere --no-disko-deps \\
+        --flake '$flake?submodules=1#\${nodeName}' \\
+        --generate-hardware-config nixos-generate-config '$flake/\${node.dir}/hardware-configuration.nix' \\
+        \${buildOn} \${useSubstitutes} \${extraFiles} \${lib.escapeShellArg node.install.targetHost}
+    '';
+  }
+) nodeNames)
+EOF
+	)
 }
-
-install_node() {
-	set -euo pipefail
-
-	local flake=$1
-	local node_name=$2
-	local node_dir=$3
-	local target_host=$4
-	local build_on_remote=$5
-	local use_substitutes=$6
-	local ssh_host_key=$7
-	shift 7
-
-	local args=()
-	local sshOpt
-	for sshOpt; do
-		args+=(-o "$sshOpt")
-	done
-	if [[ -n $build_on_remote ]]; then
-		args+=(--build-on remote)
-	else
-		args+=(--build-on local)
-	fi
-	if [[ -z $use_substitutes ]]; then
-		args+=(--no-substitute-on-destination)
-	fi
-
-	if [[ -n $ssh_host_key ]]; then
-		local tmpdir
-		tmpdir=$(mktemp --directory)
-		# shellcheck disable=SC2064
-		trap "rm -rf '$tmpdir'" EXIT
-
-		mkdir -p "$tmpdir/etc/ssh"
-		cp -p \
-			"$flake/build/$node_dir/ssh_host_ed25519_key" \
-			"$ssh_host_key.pub" \
-			"$tmpdir/etc/ssh"
-		args+=(--extra-files "$tmpdir")
-	fi
-
-	nixos-anywhere --no-disko-deps \
-		--flake "$flake?submodules=1#$node_name" \
-		--generate-hardware-config nixos-generate-config "$flake/$node_dir/hardware-configuration.nix" \
-		"${args[@]}" \
-		"$target_host"
-}
-export -f install_node
 
 cmd_node_build() {
 	local args
@@ -284,33 +177,38 @@ cmd_node_build() {
 
 	local flake
 	flake=$(find_flake)
-	run_make "$flake" "$@"
-	local json
-	json=$(nixeval_nixverse json "$flake" "getNodeBuildJobs (lib.splitString \" \" \"$*\")")
-	parallel "$parallel" "$json"
+	make_flake "$flake" "$@"
+	parallel-run "$parallel" <(
+		eval_nixverse "$flake" "$@" <<EOF
+builtins.toJSON (map (
+  nodeName:
+  let
+    node = entities.\${nodeName};
+    attrPath = {
+      nixos = "nixosConfigurations.\${nodeName}.config.system.build.toplevel";
+      darwin = "darwinConfigurations.\${nodeName}.system";
+    }.\${node.os};
+  in
+  {
+    name = nodeName;
+    command = "nix build --no-link --show-trace '$flake?submodules=1#\${attrPath}'";
+  }
+) nodeNames)
+EOF
+	)
 }
 
-build_node() {
-	set -euo pipefail
+cmd_help_node_deploy() {
+	cat <<EOF
+Usage: nixverse node deploy [<option>...] <node>...
 
-	local flake=$1
-	local node_name=$2
-	local node_os=$3
+Deploy one or more nodes.
 
-	case $node_os in
-	nixos)
-		nix build --show-trace --no-link "$flake?submodules=1#nixosConfigurations.$node_name.config.system.build.toplevel"
-		;;
-	darwin)
-		nix build --show-trace --no-link "$flake?submodules=1#darwinConfigurations.$node_name.system"
-		;;
-	*)
-		echo >&2 "Unknown node OS: $node_os"
-		return 1
-		;;
-	esac
+Options:
+  -p, --parallel <num>      number of nodes to deploy in parallel (default: 10)
+  -h, --help                show this help
+EOF
 }
-export -f build_node
 
 cmd_node_deploy() {
 	local args
@@ -349,77 +247,59 @@ cmd_node_deploy() {
 		return 1
 	fi
 
+	which darwin-rebuild
 	local flake
 	flake=$(find_flake)
-	run_make "$flake" "$@"
-	local json
-	json=$(nixeval_nixverse json "$flake" "getNodeDeployJobs (lib.splitString \" \" \"$*\")")
-	parallel "$parallel" "$json"
+	make_flake "$flake" "$@"
+	parallel-run "$parallel" <(
+		eval_nixverse "$flake" "$@" <<EOF
+builtins.toJSON (map (
+  nodeName:
+  let
+    node = entities.\${nodeName};
+    targetHost = lib.optionalString (node.deploy.targetHost != null) "--target-host \${lib.escapeShellArg node.deploy.targetHost}";
+    buildHost = lib.optionalString (node.deploy.targetHost != null && node.deploy.buildOnRemote) "--build-host \${lib.escapeShellArg node.deploy.targetHost}";
+    useSubstitutes = lib.optionalString (node.deploy.useSubstitutes) "--use-substitutes";
+    useRemoteSudo = lib.optionalString (node.deploy.useRemoteSudo) "--use-remote-sudo";
+    sshOpts = "NIX_SSHOPTS=\${lib.escapeShellArg (map (opt: "-o \${lib.escapeShellArg opt}") node.deploy.sshOpts)}";
+    common = "--flake \${lib.escapeShellArg "$flake?submodules=1#\${nodeName}"} --show-trace";
+  in
+  assert lib.assertMsg (lib.length nodeNames != 1 -> node.deploy.targetHost != null)
+    "Deploying multiple local nodes in parallel is not allowed";
+  {
+    name = nodeName;
+    command = {
+      nixos = "\${sshOpts} nixos-rebuild-ng switch \${targetHost} \${buildHost} \${useSubstitutes} \${useRemoteSudo} \${common}";
+      darwin = "sudo darwin-rebuild switch \${common}";
+    }.\${node.os};
+  }
+) nodeNames)
+EOF
+	)
 }
 
-deploy_node() {
-	set -euo pipefail
+cmd_help_eval() {
+	cat <<EOF
+Usage: nixverse eval [<option>...] <nix expression>
 
-	local flake=$1
-	local node_name=$2
-	local node_os=$3
-	local target_host=$4
-	local build_on_remote=$5
-	local use_substitutes=$6
-	local use_remote_sudo=$7
-	local ssh_opts=$8
+Evaluate a Nix expression, with these variables available:
+  lib           nixpkgs lib
+  lib'          your custom lib
+  nodes         all nodes
 
-	case $node_os in
-	nixos)
-		local args=()
-		if [[ -n $target_host ]]; then
-			args+=(--target-host "$target_host")
-			if [[ -n $build_on_remote ]]; then
-				args+=(--build-host "$target_host")
-			fi
-		fi
-		if [[ -n $use_remote_sudo ]]; then
-			args+=(--use-remote-sudo)
-		fi
-		if [[ -n $use_substitutes ]]; then
-			args+=(--use-substitutes)
-		fi
-		NIX_SSHOPTS=$ssh_opts nixos-rebuild switch \
-			--flake "$flake?submodules=1#$node_name" \
-			--fast \
-			--show-trace \
-			"${args[@]}"
-		;;
-	darwin)
-		sudo darwin-rebuild switch \
-			--flake "$flake?submodules=1#$node_name" \
-			--show-trace
-		;;
-	*)
-		echo >&2 "Unknown node OS: $node_os"
-		return 1
-		;;
-	esac
+Options:
+  -h, --help    show this help
+EOF
 }
-export -f deploy_node
 
 cmd_eval() {
 	local args
-	args=$(getopt -n nixverse -o 'h' --long 'help,raw,json' -- "$@")
+	args=$(getopt -n nixverse -o 'h' --long 'help' -- "$@")
 	eval set -- "$args"
 	unset args
 
-	local format=raw
 	while true; do
 		case $1 in
-		--raw)
-			format=raw
-			shift
-			;;
-		--json)
-			format=json
-			shift
-			;;
 		-h | --help)
 			cmd help eval
 			return
@@ -443,19 +323,71 @@ cmd_eval() {
 	local flake
 	flake=$(find_flake)
 
-	local expr
-	expr=$(
-		cat <<EOF
+	eval_flake "$flake" <<EOF
 let
-  inherit (
-    (flake.nixverse "$flake").evalData
-  ) lib lib' nodes;
+  inherit (flake.nixverse) lib nodes;
+  lib' = flake.lib;
 in
-${@: -1}
+$*
 EOF
-	)
+}
 
-	nixeval "$format" "$flake" "$expr"
+cmd_help_secrets() {
+	if [[ -z ${1-} ]]; then
+		cat <<EOF
+Usage: nixverse secrets <command> [<argument>...]
+
+Manage secrets
+
+Commands:
+  edit         edit an encrytped file
+  encrypt      encrypt a file
+  decrypt      decrypt a file
+
+Use "nixverse secrets <command> --help" for more information about a command.
+EOF
+	else
+		cmd help secrets "$@"
+	fi
+}
+cmd_help_secrets_edit() {
+	cat <<EOF
+Usage: nixverse secrets edit [<option>...] [<file>]
+
+Edit an encrytped file.
+With no <file>, edit top secrets.yaml.
+
+Options:
+  -h, --help    show this help
+EOF
+}
+
+cmd_help_secrets_encrypt() {
+	cat <<EOF
+Usage: nixverse secrets encrypt [<option>...] [<file>] [<output>]
+
+Encrypt a file.
+With no <file> or <file> is -, encrypt standard input.
+With no <output> or <output> is -, output to standard output.
+
+Options:
+  -i, --in-place      encrypt the file in-place
+  -h, --help          show this help
+EOF
+}
+
+cmd_help_secrets_decrypt() {
+	cat <<EOF
+Usage: nixverse secrets decrypt [<option>...] [<file>] [<output>]
+
+Decrypt a file.
+With no <file> or <file> is -, decrypt standard input.
+With no <output> or <output> is -, output to standard output.
+
+Options:
+  -i, --in-place      decrypt the file in-place
+  -h, --help          show this help
+EOF
 }
 
 cmd_secrets() {
@@ -845,49 +777,12 @@ EOF
 	popd >/dev/null
 }
 
-nixeval() {
-	local format=$1
-	local flake=$2
-	local expr=$3
+cmd_help_help() {
+	cat <<EOF
+Usage: nixverse help <command>
 
-	local args=()
-	case $format in
-	json | raw)
-		args+=("--$format")
-		;;
-	*)
-		echo >&"Unknown format: $format"
-		return 1
-		;;
-	esac
-
-	expr=$(
-		cat <<EOF
-flake:
-  if builtins.isFunction flake.nixverse or null then
-  	($expr)
-  else
-  	builtins.abort "not inside a flake directory with nixverse loaded"
+Show help for the command.
 EOF
-	)
-	nix eval \
-		--no-warn-dirty \
-		--apply "$expr" \
-		--show-trace \
-		"${args[@]}" \
-		"$flake?submodules=1#."
-}
-
-nixeval_nixverse() {
-	local format=$1
-	local flake=$2
-	local expr=$3
-
-	nixeval "$format" "$flake" "with flake.nixverse \"$flake\"; $expr"
-}
-
-nix() {
-	command nix --extra-experimental-features 'nix-command flakes' "$@"
 }
 
 find_flake() {
@@ -913,7 +808,7 @@ find_flake() {
 	done
 }
 
-run_make() {
+make_flake() {
 	local flake=$1
 	shift
 
@@ -921,19 +816,99 @@ run_make() {
 		return
 	fi
 
-	local mk
-	mk=$(nixeval_nixverse raw "$flake" nodesMakefileVars)
+	{
+		local targets
+		read -r targets
+		local makefile
+		makefile=$(cat)
+	} < <(
+		eval_nixverse "$flake" "$@" <<EOF
+let
+  targets = map (name: "nodes/\${name}") nodeNames;
+  makefile = [
+    ".PHONY: \${toString (map (nodeName: "nodes/\${nodeName}") nodeNames)}"
+  ] ++ lib'.concatMapAttrsToList (entityName: entity:
+    {
+      node = [
+        "node_\${entityName}_os := \${entity.os}"
+        "node_\${entityName}_channel := \${entity.channel}"
+      ];
+      group = [
+        "\${entityName}_node_names := \${toString (lib.attrNames entity.nodes)}"
+      ];
+    }.\${entity.type}
+  ) entities;
+in
+lib.concatLines ([ (toString targets) ] ++ makefile)
+EOF
+	)
 
-	local targets
-	targets=$(nixeval_nixverse raw "$flake" "getNodesMakefileTargets (lib.splitString \" \" \"$*\")")
 	local nproc
 	nproc=$(nproc)
 	# shellcheck disable=SC2086
-	make -j $((nproc + 1)) -C "$flake" -f - $targets <<-EOF
-		$mk
-		-include Makefile
-		-include private/Makefile
-	EOF
+	make -j $((nproc + 1)) -C "$flake" -f <(
+		cat <<EOF
+$makefile
+-include Makefile
+-include private/Makefile
+EOF
+	) $targets
+}
+
+eval_flake() {
+	local flake=$1
+	shift
+
+	local expr
+	expr=$(
+		cat <<EOF
+flake:
+  assert if flake ? nixverse then
+    true
+  else
+    throw "Not inside a flake with nixverse loaded";
+  $(cat)
+EOF
+	)
+
+	nix eval \
+		--no-warn-dirty \
+		--apply "$expr" \
+		--show-trace \
+		--raw \
+		"$flake?submodules=1#."
+}
+
+eval_nixverse() {
+	local flake=$1
+	shift
+
+	local node_names=''
+	if [[ $# != 0 ]]; then
+		node_names=$(
+			cat <<EOF
+    entityNames = lib.split " " "$*";
+    nodeNames = lib.concatMap (entityName:
+      let
+        entity = entities.\${entityName};
+      in
+      assert lib.assertMsg (lib.hasAttr entityName entities) "Unknown node \${entityName}";
+      {
+        node = [ entityName ];
+        group = lib.attrNames entity.nodes;
+      }.\${entity.type}
+    ) entityNames;
+EOF
+		)
+	fi
+
+	eval_flake "$flake" <<EOF
+  let
+    inherit (flake.nixverse) lib lib' entities;
+$node_names
+  in
+  $(cat)
+EOF
 }
 
 make() {
@@ -942,6 +917,10 @@ make() {
 		--no-builtin-variables \
 		--warn-undefined-variables \
 		"$@"
+}
+
+nix() {
+	command nix --extra-experimental-features 'nix-command flakes' "$@"
 }
 
 cmd() {
@@ -1058,4 +1037,5 @@ cmd() {
 		return 1
 	fi
 }
+
 cmd '' "$@"

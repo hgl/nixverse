@@ -1,5 +1,0 @@
-{
-  nodeA = {
-    x = "nodeAParentB";
-  };
-}

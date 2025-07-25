@@ -1,3 +1,0 @@
-{
-  doubleLayer-node = { };
-}

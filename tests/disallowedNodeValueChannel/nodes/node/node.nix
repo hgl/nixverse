@@ -1,4 +1,0 @@
-{
-  os = "nixos";
-  channel = "any";
-}

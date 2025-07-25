@@ -1,3 +1,0 @@
-{
-  overrideLib-group = { };
-}

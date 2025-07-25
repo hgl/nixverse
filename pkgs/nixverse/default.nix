@@ -12,10 +12,18 @@
   jq,
   yq,
   nixos-anywhere,
-  nixos-rebuild,
+  nixos-rebuild-ng,
   darwin-rebuild,
   buildGoModule,
 }:
+let
+  parallel-run = buildGoModule {
+    name = "nixverse";
+    src = ../..;
+    vendorHash = "sha256-osBO3GTp7JvK3+Sz678cKUgl+10FJI9n6AVLpBTeIrA=";
+    subPackages = [ "cmd/parallel-run" ];
+  };
+in
 runCommand "nixverse"
   {
     meta.mainProgram = "nixverse";
@@ -40,16 +48,13 @@ runCommand "nixverse"
             jq
             yq
             nixos-anywhere
-            nixos-rebuild
+            nixos-rebuild-ng
+            parallel-run
             (builtins.placeholder "out")
-            (buildGoModule {
-              name = "nixverse";
-              src = ../..;
-              vendorHash = "sha256-osBO3GTp7JvK3+Sz678cKUgl+10FJI9n6AVLpBTeIrA=";
-              subPackages = [ "cmd/parallel" ];
-            })
           ]
-          ++ lib.optional (darwin-rebuild != null) darwin-rebuild
+          # TODO: re-enable this after it no longer defaults to older version of nix
+          # https://github.com/nix-darwin/nix-darwin/pull/1549
+          # ++ lib.optional (darwin-rebuild != null) darwin-rebuild
         )
       }
     chmod a=rx $out/bin/nixverse
