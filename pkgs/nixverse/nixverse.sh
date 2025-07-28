@@ -852,7 +852,7 @@ EOF
 	local path
 	path=$(
 		eval_nixverse "$flake" <<EOF
-lib.concatStringsSep ":" flake.nixverse.makefileInputs.$system or []
+lib.makeBinPath flake.nixverse.makefileInputs.$system or []
 EOF
 	)
 

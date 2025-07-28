@@ -18,6 +18,7 @@ let
     inherit
       lib
       lib'
+      self
       userFlake
       userFlakePath
       ;
