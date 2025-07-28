@@ -99,4 +99,9 @@ assert lib.assertMsg (
   nixosConfigurations = loadConfigurations "nixos";
   darwinConfigurations = loadConfigurations "darwin";
 }
-// lib.removeAttrs userOutputs [ "makefileInputs" ]
+// lib.removeAttrs userOutputs [
+  "lib"
+  "nixosConfigurations"
+  "darwinConfigurations"
+  "makefileInputs"
+]
