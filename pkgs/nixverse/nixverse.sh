@@ -845,14 +845,28 @@ EOF
 
 	local nproc
 	nproc=$(nproc)
-	# shellcheck disable=SC2086
-	make -j $((nproc + 1)) -C "$flake" -f <(
-		cat <<EOF
+
+	local system
+	system=$(nix eval --raw --expr 'builtins.currentSystem' --impure)
+
+	local path
+	path=$(
+		eval_nixverse "$flake" <<EOF
+lib.concatStringsSep ":" flake.nixverse.makefileInputs.$system or []
+EOF
+	)
+
+	(
+		export PATH=$path:$PATH
+		# shellcheck disable=SC2086
+		make -j $((nproc + 1)) -C "$flake" -f <(
+			cat <<EOF
 $makefile
 -include Makefile
 -include private/Makefile
 EOF
-	) $targets
+		) $targets
+	)
 }
 
 eval_flake() {

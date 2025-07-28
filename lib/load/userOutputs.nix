@@ -29,9 +29,16 @@ let
       else
         { }
     ) entities;
-  userOutputs = self.inputs.flake-parts.lib.mkFlake { inherit (userFlake) inputs; } {
-    imports =
-      map (path: {
+  userOutputs =
+    let
+      inherit (self.inputs) flake-parts;
+    in
+    flake-parts.lib.mkFlake { inherit (userFlake) inputs; } {
+      imports = [
+        ./flakeModules/makefileInputs.nix
+      ]
+      ++ map (path: {
+        _file = path;
         flake = {
           config = lib'.call (import path) {
             inherit nodes;
@@ -46,6 +53,7 @@ let
         };
       }) raw.top or [ ]
       ++ map (path: {
+        _file = path;
         perSystem =
           { system, ... }:
           let
@@ -62,8 +70,8 @@ let
             };
           };
       }) raw.perSystem or [ ];
-    systems = lib.systems.flakeExposed;
-  };
+      systems = lib.systems.flakeExposed;
+    };
 in
 assert lib.assertMsg (
   userOutputs.nixosConfigurations == { }
@@ -86,8 +94,9 @@ assert lib.assertMsg (
       entities
       nodes
       ;
+    inherit (userOutputs) makefileInputs;
   };
   nixosConfigurations = loadConfigurations "nixos";
   darwinConfigurations = loadConfigurations "darwin";
 }
-// userOutputs
+// lib.removeAttrs userOutputs [ "makefileInputs" ]
