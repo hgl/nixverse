@@ -124,10 +124,10 @@ let
     };
   configuration = mkConfiguration {
     specialArgs = {
-      inputs = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) userFlake.inputs;
-      nodes = nodesWithCurrent;
-      modules' = userModules.${os};
       lib' = userLib;
+      inputs' = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) userFlake.inputs;
+      modules' = userModules.${os};
+      nodes = nodesWithCurrent;
     }
     // lib.optionalAttrs (lib.pathExists "${userFlakePath}/private") {
       privatePath = "${userFlakePath}/private";
@@ -182,7 +182,7 @@ let
             useGlobalPkgs = lib.mkDefault true;
             useUserPackages = lib.mkDefault true;
             extraSpecialArgs = {
-              inputs = lib.mapAttrs (
+              inputs' = lib.mapAttrs (
                 name: input:
                 lib.removeAttrs input [
                   "modules"
@@ -191,9 +191,9 @@ let
                 // {
                   modules = input.homeModules;
                 }
-              ) userFlake.inputs;
-              nodes = nodesWithCurrent;
+              ) inputs;
               modules' = userModules.home;
+              nodes = nodesWithCurrent;
             };
             users = lib.mapAttrs (userName: paths: {
               imports = paths;
