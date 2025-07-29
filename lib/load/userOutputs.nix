@@ -39,9 +39,10 @@ let
       ]
       ++ map (path: {
         _file = path;
-        flake = {
-          config = lib'.call (import path) {
-            inherit nodes;
+        flake =
+          { config, ... }:
+          lib'.call (import path) {
+            inherit config nodes;
             self = userFlake;
             inputs = userFlake.inputs;
             lib = userFlake.inputs.nixpkgs-unstable.lib;
@@ -50,24 +51,26 @@ let
             darwinModules' = userModules.darwin;
             homeModules' = userModules.home;
           };
-        };
       }) raw.top or [ ]
       ++ map (path: {
         _file = path;
         perSystem =
-          { system, ... }:
+          { config, system, ... }:
           let
             pkgs = userFlake.inputs.nixpkgs-unstable.legacyPackages.${system};
           in
-          {
-            config = lib'.call (import path) {
-              inherit system pkgs nodes;
-              self = userFlake;
-              inputs = userFlake.inputs;
-              lib = userFlake.inputs.nixpkgs-unstable.lib;
-              lib' = userLib;
-              pkgs' = userPkgs pkgs;
-            };
+          lib'.call (import path) {
+            inherit
+              config
+              system
+              pkgs
+              nodes
+              ;
+            self = userFlake;
+            inputs = userFlake.inputs;
+            lib = userFlake.inputs.nixpkgs-unstable.lib;
+            lib' = userLib;
+            pkgs' = userPkgs pkgs;
           };
       }) raw.perSystem or [ ];
       systems = lib.systems.flakeExposed;
