@@ -32,8 +32,8 @@ let
             nodes = nodesWithCurrent;
           };
           modules = [
-            ./modules/assertions.nix
-            ./modules/meta.nix
+            ./modules/nixos/assertions.nix
+            ./modules/nixos/meta.nix
           ]
           ++ map (
             def:

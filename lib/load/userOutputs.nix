@@ -40,8 +40,6 @@ let
         specialArgs = {
           inherit nodes;
           self = userFlake;
-          lib = userFlake.inputs.nixpkgs-unstable.lib;
-          lib' = userLib;
           nixosModules' = userModules.nixos;
           darwinModules' = userModules.darwin;
           homeModules' = userModules.home;
@@ -50,9 +48,13 @@ let
       }
       {
         imports = [
-          ./flakeModules/makefileInputs.nix
+          ./modules/flake/makefileInputs.nix
         ]
         ++ userFlakeModules;
+        _module.args = {
+          lib = userFlake.inputs.nixpkgs-unstable.lib;
+          lib' = userLib;
+        };
         systems = lib.systems.flakeExposed;
         perSystem =
           { system, ... }:
