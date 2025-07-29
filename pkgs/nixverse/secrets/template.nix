@@ -1,0 +1,7 @@
+{
+  nodes = {
+    nodeName = {
+      key = "value";
+    };
+  };
+}

@@ -90,6 +90,7 @@ assert lib.assertMsg (
       entities
       nodes
       ;
+    inherit (userFlake) inputs;
     inherit (userOutputs) makefileInputs;
   };
   nixosConfigurations = loadConfigurations "nixos";

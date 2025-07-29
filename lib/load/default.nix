@@ -39,8 +39,11 @@ let
         "dir"
         "diskConfigPaths"
         "sshHostKeyPath"
+        "recursiveFoldParentNames"
       ];
-      group = entity;
+      group = lib.removeAttrs entity [
+        "recursiveFoldChildNames"
+      ];
     }
     .${entity.type}
   ) entities;

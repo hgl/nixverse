@@ -63,6 +63,7 @@ let
         lib.removeAttrs raw [ "defs" ]
         // {
           inherit descendantNames nodeNames;
+          recursiveFoldChildNames = f: nul: recursiveFoldChildNames f nul [ entityName ];
         };
     }
     .${raw.type}
@@ -73,6 +74,7 @@ let
           parentNames ++ acc
         ) [ ] raw.parentNames
         ++ raw.parentNames;
+      recursiveFoldParentNames = f: nul: recursiveFoldParentNames f nul [ entityName ];
     }
   ) linkedEntities;
   linkedEntities = lib.mapAttrs (

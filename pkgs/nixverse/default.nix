@@ -29,32 +29,33 @@ runCommand "nixverse"
     meta.mainProgram = "nixverse";
   }
   ''
-    mkdir -p $out/{bin,lib/nixverse}
-    cp ${./secrets.mk} $out/lib/nixverse/secrets.mk
+    mkdir -p $out/{bin,lib/nixverse/secrets}
+    cp ${./secrets/Makefile} $out/lib/nixverse/secrets/Makefile
+    cp ${./secrets/module.nix} $out/lib/nixverse/secrets/module.nix
+    cp ${./secrets/template.nix} $out/lib/nixverse/secrets/template.nix
+
     substitute ${./nixverse.sh} $out/bin/nixverse \
       --subst-var-by shell ${lib.getExe bash} \
       --subst-var-by out $out \
       --subst-var-by path ${
-        lib.makeBinPath (
-          [
-            bash
-            coreutils
-            findutils
-            util-linux
-            gnumake
-            openssh
-            sops
-            ssh-to-age
-            jq
-            yq
-            nixos-anywhere
-            nixos-rebuild-ng
-            parallel-run
-            (builtins.placeholder "out")
-          ]
-          # TODO: re-enable this after it no longer defaults to older version of nix
-          # https://github.com/nix-darwin/nix-darwin/pull/1549
-          # ++ lib.optional (darwin-rebuild != null) darwin-rebuild
+        lib.makeBinPath ([
+          bash
+          coreutils
+          findutils
+          util-linux
+          gnumake
+          openssh
+          sops
+          ssh-to-age
+          yq
+          nixos-anywhere
+          nixos-rebuild-ng
+          parallel-run
+          (builtins.placeholder "out")
+        ]
+        # TODO: re-enable this after it no longer defaults to older version of nix
+        # https://github.com/nix-darwin/nix-darwin/pull/1549
+        # ++ lib.optional (darwin-rebuild != null) darwin-rebuild
         )
       }
     chmod a=rx $out/bin/nixverse
