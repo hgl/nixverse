@@ -11,13 +11,14 @@
   nodes,
 }:
 let
-  raw =
-    lib'.dirEntryImportPaths
+  userFlakeModules =
+    (lib'.importPathsInDirs
       [
-        "${userFlakePath}/outputs"
-        "${userFlakePath}/private/outputs"
+        userFlakePath
+        "${userFlakePath}/private"
       ]
-      [ "top" "perSystem" ];
+      [ "outputs" ]
+    ).outputs;
   loadConfigurations =
     os:
     lib.concatMapAttrs (
@@ -33,48 +34,38 @@ let
     let
       inherit (self.inputs) flake-parts;
     in
-    flake-parts.lib.mkFlake { inherit (userFlake) inputs; } {
-      imports = [
-        ./flakeModules/makefileInputs.nix
-      ]
-      ++ map (path: {
-        _file = path;
-        flake =
-          { config, ... }:
-          lib'.call (import path) {
-            inherit config nodes;
-            self = userFlake;
-            inputs = userFlake.inputs;
-            lib = userFlake.inputs.nixpkgs-unstable.lib;
-            lib' = userLib;
-            nixosModules' = userModules.nixos;
-            darwinModules' = userModules.darwin;
-            homeModules' = userModules.home;
-          };
-      }) raw.top or [ ]
-      ++ map (path: {
-        _file = path;
+    flake-parts.lib.mkFlake
+      {
+        inherit (userFlake) inputs;
+        specialArgs = {
+          inherit nodes;
+          self = userFlake;
+          lib = userFlake.inputs.nixpkgs-unstable.lib;
+          lib' = userLib;
+          nixosModules' = userModules.nixos;
+          darwinModules' = userModules.darwin;
+          homeModules' = userModules.home;
+          flakeModules' = userModules.flake;
+        };
+      }
+      {
+        imports = [
+          ./flakeModules/makefileInputs.nix
+        ]
+        ++ userFlakeModules;
+        systems = lib.systems.flakeExposed;
         perSystem =
-          { config, system, ... }:
+          { system, ... }:
           let
             pkgs = userFlake.inputs.nixpkgs-unstable.legacyPackages.${system};
           in
-          lib'.call (import path) {
-            inherit
-              config
-              system
-              pkgs
-              nodes
-              ;
-            self = userFlake;
-            inputs = userFlake.inputs;
-            lib = userFlake.inputs.nixpkgs-unstable.lib;
-            lib' = userLib;
-            pkgs' = userPkgs pkgs;
+          {
+            _module.args = {
+              inherit pkgs;
+              pkgs' = userPkgs pkgs;
+            };
           };
-      }) raw.perSystem or [ ];
-      systems = lib.systems.flakeExposed;
-    };
+      };
 in
 assert lib.assertMsg (
   userOutputs.nixosConfigurations == { }

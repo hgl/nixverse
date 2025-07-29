@@ -14,7 +14,7 @@
     in
     assert lib.assertMsg (n <= 1) "Both ${path} and ${lib.elemAt paths 1} exist, only one is allowed";
     lib.optional (n != 0) path;
-  dirEntryImportPaths =
+  importPathsInDirs =
     dirs: names:
     lib.zipAttrsWith (name: paths: lib.concatLists paths) (
       lib.concatMap (
@@ -24,7 +24,7 @@
         }) names
       ) dirs
     );
-  allDirEntryImportPaths =
+  allImportPathsInDirs =
     dirs:
     lib.zipAttrs (
       lib.concatMap (

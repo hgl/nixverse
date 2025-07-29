@@ -257,7 +257,7 @@ let
     ) rawEntity.groupNames
     ++ lib'.optionalPath "${rawEntity.path}/${fileName}"
     ++ lib'.optionalPath "${rawEntity.privatePath}/${fileName}";
-  homeFiles = lib'.allDirEntryImportPaths (
+  homeFiles = lib'.allImportPathsInDirs (
     lib.concatMap (parentName: [
       "${userFlakePath}/nodes/${parentName}/common/home"
       "${userFlakePath}/private/nodes/${parentName}/common/home"

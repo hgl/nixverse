@@ -12,7 +12,7 @@ let
     nixverse = self.packages.${pkgs.stdenv.hostPlatform.system}.nixverse;
   };
   pkgs' = lib.mapAttrs (name: paths: callPackage (lib.last paths) { }) (
-    lib'.allDirEntryImportPaths [
+    lib'.allImportPathsInDirs [
       "${userFlakePath}/pkgs"
       "${userFlakePath}/private/pkgs"
     ]

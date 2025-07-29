@@ -12,7 +12,7 @@ let
   };
   userLib =
     builtins.foldl' (acc: path: lib.recursiveUpdate acc (lib'.call (import path) userLibArgs)) { }
-      (lib'.dirEntryImportPaths
+      (lib'.importPathsInDirs
         [
           userFlakePath
           "${userFlakePath}/private"

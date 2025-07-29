@@ -11,9 +11,9 @@
         imports = paths;
       })
       (
-        lib'.allDirEntryImportPaths [
-          "${userFlakePath}/modules/common"
-          "${userFlakePath}/private/modules/common"
+        lib'.allImportPathsInDirs [
+          # "${userFlakePath}/modules/common"
+          # "${userFlakePath}/private/modules/common"
           "${userFlakePath}/modules/nixos"
           "${userFlakePath}/private/modules/nixos"
         ]
@@ -24,9 +24,9 @@
         imports = paths;
       })
       (
-        lib'.allDirEntryImportPaths [
-          "${userFlakePath}/modules/common"
-          "${userFlakePath}/private/modules/common"
+        lib'.allImportPathsInDirs [
+          # "${userFlakePath}/modules/common"
+          # "${userFlakePath}/private/modules/common"
           "${userFlakePath}/modules/darwin"
           "${userFlakePath}/private/modules/darwin"
         ]
@@ -37,9 +37,20 @@
         imports = paths;
       })
       (
-        lib'.allDirEntryImportPaths [
+        lib'.allImportPathsInDirs [
           "${userFlakePath}/modules/home"
           "${userFlakePath}/private/modules/home"
+        ]
+      );
+  flake =
+    lib.mapAttrs
+      (name: paths: {
+        imports = paths;
+      })
+      (
+        lib'.allImportPathsInDirs [
+          "${userFlakePath}/modules/flake"
+          "${userFlakePath}/private/modules/flake"
         ]
       );
 }

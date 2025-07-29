@@ -7,9 +7,9 @@ let
   privateDir = toString ./dirAttrs/private;
 in
 {
-  dirEntryImportPaths = {
+  importPathsInDirs = {
     expr =
-      lib'.dirEntryImportPaths
+      lib'.importPathsInDirs
         [
           publicDir
           privateDir
@@ -29,9 +29,9 @@ in
       ];
     };
   };
-  dirEntryImportPathsEmpty = {
+  importPathsInDirsEmpty = {
     expr =
-      lib'.dirEntryImportPaths
+      lib'.importPathsInDirs
         [
           publicDir
         ]
@@ -40,8 +40,8 @@ in
       non-exist = [ ];
     };
   };
-  allDirEntryImportPaths = {
-    expr = lib'.allDirEntryImportPaths [
+  allImportPathsInDirs = {
+    expr = lib'.allImportPathsInDirs [
       publicDir
       privateDir
     ];
@@ -62,12 +62,12 @@ in
       ];
     };
   };
-  allDirEntryImportPathsDup =
+  allImportPathsInDirsDup =
     let
       dir = toString ./dupDirAttrs;
     in
     {
-      expr = lib'.allDirEntryImportPaths [
+      expr = lib'.allImportPathsInDirs [
         dir
       ];
       expectedError = {
