@@ -8,7 +8,7 @@
 pkgs:
 let
   callPackage = pkgs.newScope {
-    inherit pkgs';
+    inherit pkgs' lib';
     nixverse = self.packages.${pkgs.stdenv.hostPlatform.system}.nixverse;
   };
   pkgs' = lib.mapAttrs (name: paths: callPackage (lib.last paths) { }) (
