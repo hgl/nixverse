@@ -40,6 +40,21 @@ in
       non-exist = [ ];
     };
   };
+  importPathsInSubdirs = {
+    expr =
+      lib'.importPathsInSubdirs
+        [
+          publicDir
+          privateDir
+        ]
+        [ "home" ];
+    expected = {
+      subdir = [
+        "${publicDir}/subdir/home/default.nix"
+        "${privateDir}/subdir/home.nix"
+      ];
+    };
+  };
   allImportPathsInDirs = {
     expr = lib'.allImportPathsInDirs [
       publicDir

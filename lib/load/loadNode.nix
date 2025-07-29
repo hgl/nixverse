@@ -182,6 +182,7 @@ let
             useGlobalPkgs = lib.mkDefault true;
             useUserPackages = lib.mkDefault true;
             extraSpecialArgs = {
+              inherit lib';
               inputs' = lib.mapAttrs (
                 name: input:
                 lib.removeAttrs input [
@@ -198,7 +199,7 @@ let
             users = lib.mapAttrs (userName: paths: {
               imports = paths;
               _module.args = {
-                inherit lib' pkgs';
+                inherit pkgs';
               };
             }) homeFiles;
           };
@@ -257,16 +258,16 @@ let
     ) rawEntity.groupNames
     ++ lib'.optionalPath "${rawEntity.path}/${fileName}"
     ++ lib'.optionalPath "${rawEntity.privatePath}/${fileName}";
-  homeFiles = lib'.allImportPathsInDirs (
+  homeFiles = lib'.importPathsInSubdirs (
     lib.concatMap (parentName: [
-      "${userFlakePath}/nodes/${parentName}/common/home"
-      "${userFlakePath}/private/nodes/${parentName}/common/home"
+      "${userFlakePath}/nodes/${parentName}/common/users"
+      "${userFlakePath}/private/nodes/${parentName}/common/users"
     ]) rawEntity.groupNames
     ++ [
-      "${rawEntity.path}/home"
-      "${rawEntity.privatePath}/home"
+      "${rawEntity.path}/users"
+      "${rawEntity.privatePath}/users"
     ]
-  );
+  ) [ "home" ];
 in
 lib.removeAttrs rawEntity [
   "createdByGroup"

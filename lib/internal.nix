@@ -24,6 +24,27 @@
         }) names
       ) dirs
     );
+  importPathsInSubdirs =
+    dirs: names:
+    lib.zipAttrs (
+      lib.concatMap (
+        dir:
+        lib.optionals (lib.pathExists dir) (
+          lib'.concatMapAttrsToList (
+            subdir: type:
+            lib.concatMap (
+              name:
+              let
+                paths = lib'.optionalImportPath "${dir}/${subdir}" name;
+              in
+              lib.optional (paths != [ ]) {
+                ${subdir} = lib.head paths;
+              }
+            ) names
+          ) (builtins.readDir dir)
+        )
+      ) dirs
+    );
   allImportPathsInDirs =
     dirs:
     lib.zipAttrs (
