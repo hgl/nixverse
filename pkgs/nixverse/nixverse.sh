@@ -374,7 +374,6 @@ Options:
 EOF
 }
 cmd_secrets_edit() {
-	set -x
 	local args
 	args=$(getopt -n nixverse -o 'h' --long 'help' -- "$@")
 	eval set -- "$args"
@@ -509,7 +508,7 @@ EOF
 		exit 1
 	fi
 	yq --raw-output .makefile build/secrets.json |
-		make -f @out@/lib/nixverse/secrets/Makefile -f -
+		make --silent -f @out@/lib/nixverse/secrets/Makefile -f -
 	sops --encrypt --output-type yaml --indent 2 \
 		--output "$secrets_file" build/secrets.nix
 	popd >/dev/null
@@ -531,7 +530,6 @@ Options:
 EOF
 }
 cmd_secrets_eval() {
-	set -x
 	local args
 	args=$(getopt -n nixverse -o 'h' --long 'help' -- "$@")
 	eval set -- "$args"
