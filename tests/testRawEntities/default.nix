@@ -17,7 +17,13 @@ let
 in
 {
   rawEntities = {
-    expr = rawEntities;
+    expr = lib.mapAttrs (
+      entityName: rawEntity:
+      lib.removeAttrs rawEntity [
+        "recursiveFoldChildNames"
+        "recursiveFoldParentNames"
+      ]
+    ) rawEntities;
     expected = {
       node0 = {
         type = "node";

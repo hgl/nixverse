@@ -74,7 +74,6 @@ let
               "nixosModules"
               "darwinModules"
               "homeManagerModules"
-              "homeModules"
             ]
             // {
               modules =
@@ -85,8 +84,7 @@ let
                 .${os};
             }
             // {
-              homeModules =
-                if input ? homeManagerModules then input.homeManagerModules else input.homeModules or { };
+              homeModules = input.homeManagerModules or input.homeModules or { };
             };
         in
         if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
@@ -110,9 +108,8 @@ let
     v;
   baseModule =
     {
-      config,
-      pkgs,
       lib,
+      pkgs,
       nodes,
       ...
     }:
@@ -125,7 +122,7 @@ let
   configuration = mkConfiguration {
     specialArgs = {
       lib' = userLib;
-      inputs' = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) userFlake.inputs;
+      inputs' = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) inputs;
       modules' = userModules.${os};
       nodes = nodesWithCurrent;
     }
@@ -185,10 +182,7 @@ let
               inherit lib';
               inputs' = lib.mapAttrs (
                 name: input:
-                lib.removeAttrs input [
-                  "modules"
-                  "homeModules"
-                ]
+                lib.removeAttrs input [ "homeModules" ]
                 // {
                   modules = input.homeModules;
                 }
@@ -251,7 +245,9 @@ let
     .${os};
   recursiveFindFiles =
     fileName:
-    lib.concatMap (
+    lib'.optionalPath "${userFlakePath}/nodes/common/${fileName}"
+    ++ lib'.optionalPath "${userFlakePath}/private/nodes/common/${fileName}"
+    ++ lib.concatMap (
       parentName:
       lib'.optionalPath "${userFlakePath}/nodes/${parentName}/common/${fileName}"
       ++ lib'.optionalPath "${userFlakePath}/private/nodes/${parentName}/common/${fileName}"

@@ -14,6 +14,8 @@ in
   node0 = {
     expr = entities.node0.config.foo;
     expected = {
+      common = 1;
+      commonPriv = 1;
       group0 = 1;
       group0hw = 1;
       group0dc = 1;
@@ -27,6 +29,8 @@ in
   groupNode0 = {
     expr = entities.groupNode0.config.foo;
     expected = {
+      common = 1;
+      commonPriv = 1;
       group0 = 1;
       group0hw = 1;
       group0dc = 1;

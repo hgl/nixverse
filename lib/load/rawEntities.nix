@@ -173,9 +173,6 @@ let
               lib.match "[^[:space:]._]+" entityName != null
             ) "Node name cannot contain any space, . (dot) or _ (underscore): ${dir}/nodes/${entityName}";
             assert lib.assertMsg (
-              entityName != "common"
-            ) "Node name \"common\" is reserved: ${dir}/nodes/${entityName}";
-            assert lib.assertMsg (
               entityName != "current"
             ) "Node name \"current\" is reserved: ${dir}/nodes/${entityName}";
             lib.optional (lib.pathExists nodeFile) {
@@ -200,7 +197,7 @@ let
             };
           n = lib.length raws;
         in
-        lib.optional (n != 0) (
+        lib.optional (entityName != "common" && n != 0) (
           assert lib.assertMsg (
             n == 1
           ) "${entityName} cannot simultaneously be a node (${nodeFile}) and a group (${groupFile})";

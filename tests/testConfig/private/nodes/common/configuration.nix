@@ -1,0 +1,5 @@
+{
+  foo = {
+    commonPriv = 1;
+  };
+}
