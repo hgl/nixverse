@@ -294,6 +294,7 @@ Usage: nixverse eval [<option>...] <nix expression>
 Evaluate a Nix expression, with these variables available:
   lib           nixpkgs lib
   lib'          your custom lib
+  inputs        flake inputs
   nodes         all nodes
 
 Options:
@@ -335,7 +336,7 @@ cmd_eval() {
 let
   lib = flake.nixverse.inputs.nixpkgs-unstable.lib;
   lib' = flake.lib;
-  inherit (flake.nixverse) nodes;
+  inherit (flake.nixverse) inputs nodes;
 in
 $*
 EOF
@@ -1059,7 +1060,7 @@ cmd_secrets_eval() {
 let
   lib = flake.nixverse.inputs.nixpkgs-unstable.lib;
   lib' = flake.lib;
-  inherit (flake.nixverse) nodes inputs;
+  inherit (flake.nixverse) inputs nodes;
   secrets = flake.nixverse.lib'.call ($secrets) {
     inherit lib lib' secrets inputs nodes;
   };
