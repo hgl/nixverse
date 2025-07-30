@@ -617,10 +617,20 @@ make_flake() {
 	} < <(
 		eval_nixverse "$flake" "$@" <<EOF
 let
-  targets = map (name: "nodes/\${name}") nodeNames;
+  toTargets = map (name: "nodes/\${name}");
+  allNodeNames = lib.attrNames (
+    lib.concatMapAttrs (
+      entityName: entity:
+      {
+        node = { \${entityName} = true; };
+        group = lib.mapAttrs (nodeName: node: true) entity.nodes;
+      }.\${entity.type}
+    ) entities
+  );
   makefile = [
-    ".PHONY: \${toString (map (nodeName: "nodes/\${nodeName}") nodeNames)}"
-  ] ++ lib'.concatMapAttrsToList (entityName: entity:
+    ".PHONY: \${toString (toTargets allNodeNames)}"
+  ] ++ lib'.concatMapAttrsToList (
+    entityName: entity:
     {
       node = [
         "node_\${entityName}_os := \${entity.os}"
@@ -632,7 +642,7 @@ let
     }.\${entity.type}
   ) entities;
 in
-lib.concatLines ([ (toString targets) ] ++ makefile)
+lib.concatLines ([ (toString (toTargets nodeNames)) ] ++ makefile)
 EOF
 	)
 
@@ -694,27 +704,30 @@ eval_nixverse() {
 	if [[ $# != 0 ]]; then
 		node_names=$(
 			cat <<EOF
-    entityNames = lib.split " " "$*";
-    nodeNames = lib.concatMap (entityName:
-      let
-        entity = entities.\${entityName};
-      in
-      assert lib.assertMsg (lib.hasAttr entityName entities) "Unknown node \${entityName}";
-      {
-        node = [ entityName ];
-        group = lib.attrNames entity.nodes;
-      }.\${entity.type}
-    ) entityNames;
+entityNames = lib.split " " "$*";
+nodeNames = lib.attrNames (
+  lib'.concatMapListToAttrs (
+    entityName:
+    let
+      entity = entities.\${entityName};
+    in
+    assert lib.assertMsg (lib.hasAttr entityName entities) "Unknown node \${entityName}";
+    {
+      node = { \${entityName} = true; };
+      group = lib.mapAttrs (nodeName: node: true) entity.nodes;
+    }.\${entity.type}
+  ) entityNames
+);
 EOF
 		)
 	fi
 
 	eval_flake "$flake" <<EOF
-  let
-    inherit (flake.nixverse) lib lib' entities;
+let
+  inherit (flake.nixverse) lib lib' entities;
 $node_names
-  in
-  $(cat)
+in
+$(cat)
 EOF
 }
 
