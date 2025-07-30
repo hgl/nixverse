@@ -256,7 +256,6 @@ cmd_node_deploy() {
 		return 1
 	fi
 
-	which darwin-rebuild
 	local flake
 	flake=$(find_flake)
 	make_flake "$flake" "$@"
