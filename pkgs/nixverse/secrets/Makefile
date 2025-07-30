@@ -41,7 +41,7 @@ $(private_dir)nodes/%/secrets.yaml: build/secrets.json build/nodes/%/age.key bui
 			exit 1
 		fi
 	fi
-	sops --encrypt --output-type yaml --indent 2 \
+	sops --encrypt --input-type yaml --output-type yaml --indent 2 \
 		--age "$$(< $(word 3,$^))" \
 		--output $@ \
 		$@.new
