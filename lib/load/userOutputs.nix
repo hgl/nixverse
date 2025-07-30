@@ -57,7 +57,7 @@ let
         };
         systems = lib.systems.flakeExposed;
         perSystem =
-          { system, ... }:
+          { config, system, ... }:
           let
             pkgs = userFlake.inputs.nixpkgs-unstable.legacyPackages.${system};
           in
@@ -65,6 +65,17 @@ let
             _module.args = {
               inherit pkgs;
               pkgs' = userPkgs pkgs;
+            };
+            apps = {
+              nixverse = {
+                type = "app";
+                program = self.packages.${system}.nixverse;
+              };
+              default = config.apps.nixverse;
+              make = {
+                type = "app";
+                program = pkgs.callPackage (import ./packages/make.nix { inherit (config) makefileInputs; }) { };
+              };
             };
           };
       };
@@ -91,7 +102,6 @@ assert lib.assertMsg (
       nodes
       ;
     inherit (userFlake) inputs;
-    inherit (userOutputs) makefileInputs;
   };
   nixosConfigurations = loadConfigurations "nixos";
   darwinConfigurations = loadConfigurations "darwin";
