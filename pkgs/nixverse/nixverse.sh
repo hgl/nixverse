@@ -56,7 +56,6 @@ Options:
   -h, --help                show this help
 EOF
 }
-
 cmd_node_install() {
 	local args
 	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
@@ -138,6 +137,17 @@ EOF
 	)
 }
 
+cmd_help_node_build() {
+	cat <<EOF
+Usage: nixverse node build [<option>...] <node>...
+
+Run one or more nodes' makefile and build the configurations.
+
+Options:
+  -p, --parallel <num>      number of nodes to install in parallel (default: 10)
+  -h, --help                show this help
+EOF
+}
 cmd_node_build() {
 	local args
 	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
@@ -209,7 +219,6 @@ Options:
   -h, --help                show this help
 EOF
 }
-
 cmd_node_deploy() {
 	local args
 	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
@@ -291,7 +300,6 @@ Options:
   -h, --help    show this help
 EOF
 }
-
 cmd_eval() {
 	local args
 	args=$(getopt -n nixverse -o 'h' --long 'help' -- "$@")
@@ -362,7 +370,6 @@ Options:
   -h, --help    show this help
 EOF
 }
-
 cmd_help_secrets_encrypt() {
 	cat <<EOF
 Usage: nixverse secrets encrypt [<option>...] [<file>] [<output>]
@@ -378,7 +385,6 @@ Options:
   -h, --help                  show this help
 EOF
 }
-
 cmd_help_secrets_decrypt() {
 	cat <<EOF
 Usage: nixverse secrets decrypt [<option>...] [<file>] [<output>]
@@ -394,7 +400,6 @@ Options:
   -h, --help                  show this help
 EOF
 }
-
 cmd_secrets() {
 	local action=${1-}
 	shift
