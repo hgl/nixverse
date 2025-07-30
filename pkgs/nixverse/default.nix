@@ -1,6 +1,7 @@
 {
   lib,
   runCommand,
+  nix,
   bash,
   coreutils,
   util-linux, # for getopt
@@ -37,6 +38,7 @@ runCommand "nixverse"
       --subst-var-by out $out \
       --subst-var-by path ${
         lib.makeBinPath ([
+          nix
           bash
           coreutils
           util-linux
