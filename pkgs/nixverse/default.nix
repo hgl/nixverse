@@ -3,13 +3,11 @@
   runCommand,
   bash,
   coreutils,
-  findutils,
   util-linux, # for getopt
   gnumake,
   openssh,
   sops,
   ssh-to-age,
-  jq,
   yq,
   nixos-anywhere,
   nixos-rebuild-ng,
@@ -41,7 +39,6 @@ runCommand "nixverse"
         lib.makeBinPath ([
           bash
           coreutils
-          findutils
           util-linux
           gnumake
           openssh

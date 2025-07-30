@@ -11,7 +11,7 @@ private_dir := $(shell [[ -d private ]] && echo 'private/')
 $(private_dir)nodes/%/secrets.yaml: build/secrets.json build/nodes/%/age.key build/nodes/%/age.pubkey | $(private_dir)nodes/%
 	umask a=,u=rw
 	yq \
-		--yaml-output \
+		--yaml-output --indent 2 \
 		--arg name '$(lastword $(subst /, ,$*))' \
 		'.nodes[$$name]' \
 		$< >$@.new
@@ -41,10 +41,9 @@ $(private_dir)nodes/%/secrets.yaml: build/secrets.json build/nodes/%/age.key bui
 			exit 1
 		fi
 	fi
-	sops --encrypt --indent 2 \
+	sops --encrypt --output-type yaml --indent 2 \
 		--age "$$(< $(word 3,$^))" \
 		--output $@ \
-		--filename-override $(@F) \
 		$@.new
 build/nodes/%/age.key: build/nodes/%/ssh_host_ed25519_key
 	umask a=,u=rw
