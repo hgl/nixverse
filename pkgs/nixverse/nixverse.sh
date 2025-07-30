@@ -105,7 +105,7 @@ builtins.toJSON (map (
     buildOn = "--build-on \${if node.install.buildOnRemote then "remote" else "local"}";
     useSubstitutes = lib.optionalString (!node.install.useSubstitutes) "--no-substitute-on-destination";
     extraFiles = lib.optionalString (node.sshHostKeyPath != null) "--extra-files \\"\$tmpdir\\"";
-    cpFiles = lib.optionals (node.sshHostKeyPath != null) ''
+    cpFiles = lib.optionalString (node.sshHostKeyPath != null) ''
       tmpdir=\$(mktemp --directory)
       trap "rm -rf '\$tmpdir'" EXIT
       mkdir -p "\$tmpdir/etc/ssh"
