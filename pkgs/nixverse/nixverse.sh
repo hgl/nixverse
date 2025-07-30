@@ -397,6 +397,7 @@ EOF
 
 cmd_secrets() {
 	local action=${1-}
+	shift
 
 	local private_dir=''
 	local force=''
@@ -404,8 +405,11 @@ cmd_secrets() {
 	local input ref_path flake sops_target_file
 	local ref_path_is_output=''
 	case $action in
+	eval)
+		cmd secrets eval "$@"
+		return
+		;;
 	encrypt)
-		shift
 		local args
 		args=$(getopt -n nixverse -o 'hifm:n:' --long 'help,in-place,force,use-master-pubkey:,use-node-pubkey:' -- "$@")
 		eval set -- "$args"
@@ -513,7 +517,6 @@ cmd_secrets() {
 		fi
 		;;
 	decrypt)
-		shift
 		local args
 		args=$(getopt -n nixverse -o 'hifm:n:' --long 'help,in-place,force,use-master-key:,use-node-key:' -- "$@")
 		eval set -- "$args"
@@ -621,7 +624,6 @@ cmd_secrets() {
 		fi
 		;;
 	edit)
-		shift
 		local args
 		args=$(getopt -n nixverse -o 'h' --long 'help,force' -- "$@")
 		eval set -- "$args"
@@ -695,6 +697,7 @@ cmd_secrets() {
 				popd >/dev/null
 				return 1
 			fi
+			sops_action+=(--output-type yaml)
 			if [[ -n $use_master_pubkey ]]; then
 				sops --age "$(<"$use_master_pubkey")" "${sops_action[@]}" "$sops_target_file"
 			else
@@ -714,6 +717,7 @@ cmd_secrets() {
 					return 1
 				fi
 			fi
+			sops_action+=(--output-type binary)
 			if [[ -n $use_master_key ]]; then
 				SOPS_AGE_KEY=$(<"$use_master_key") sops "${sops_action[@]}" "$sops_target_file"
 			else
@@ -727,7 +731,7 @@ cmd_secrets() {
 				cp @out@/lib/nixverse/secrets/template.nix build/secrets.nix
 				chmod a=,u=rw build/secrets.nix
 			else
-				sops --decrypt --indent 2 --output-type binary \
+				sops "${sops_action[@]}" --decrypt --output-type binary \
 					--output build/secrets.nix "$sops_target_file"
 			fi
 
@@ -821,7 +825,7 @@ EOF
 			mv build/secrets.json.new build/secrets.json
 			yq --raw-output .makefile build/secrets.json |
 				make --silent -f @out@/lib/nixverse/secrets/Makefile -f -
-			sops --encrypt --indent 2 --output-type yaml \
+			sops "${sops_action[@]}" --encrypt --output-type yaml \
 				--output "$sops_target_file" build/secrets.nix
 			popd >/dev/null
 			return
@@ -991,6 +995,72 @@ EOF
 		;;
 	esac
 	popd >/dev/null
+}
+
+cmd_help_secrets_eval() {
+	cat <<EOF
+Usage: nixverse secrets eval [<option>...] <nix expression>
+
+Evaluate a Nix expression, with these variables available:
+  lib           nixpkgs lib
+  lib'          your custom lib
+  inputs        flake inputs
+  nodes         all nodes
+  secrets       all secrets
+
+Options:
+  -h, --help    show this help
+EOF
+}
+cmd_secrets_eval() {
+	local args
+	args=$(getopt -n nixverse -o 'h' --long 'help' -- "$@")
+	eval set -- "$args"
+	unset args
+
+	while true; do
+		case $1 in
+		-h | --help)
+			cmd help eval
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
+		esac
+	done
+
+	if [[ $# = 0 ]]; then
+		cmd help secrets eval >&2
+		return 1
+	fi
+
+	local private_dir=''
+	if [[ -d private ]]; then
+		private_dir=private/
+	fi
+	local secrets
+	secrets=$(cmd_secrets decrypt ${private_dir}secrets.yaml)
+
+	local flake
+	flake=$(find_flake)
+
+	eval_flake "$flake" <<EOF
+let
+  lib = flake.nixverse.inputs.nixpkgs-unstable.lib;
+  lib' = flake.lib;
+  inherit (flake.nixverse) nodes inputs;
+  secrets = flake.nixverse.lib'.call ($secrets) {
+    inherit lib lib' secrets inputs nodes;
+  };
+in
+$*
+EOF
 }
 
 cmd_help_help() {
