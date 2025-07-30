@@ -494,20 +494,21 @@ builtins.toJSON {
 EOF
 	)
 	trap 'rm -f build/secrets.json' EXIT
+	yq --raw-output .makefile build/secrets.json |
+		make --silent -f @out@/lib/nixverse/secrets/Makefile -f -
 	if [[ -z $ssecrets_file_exist ]]; then
 		:
 	elif
 		sops --decrypt --output-type binary "$secrets_file" |
-			cmp --quiet - build/secrets.json
+			cmp --quiet - build/secrets.nix
 	then
+		popd >/dev/null
 		return
 	elif [[ $? = 1 ]]; then
 		:
 	else
 		exit 1
 	fi
-	yq --raw-output .makefile build/secrets.json |
-		make --silent -f @out@/lib/nixverse/secrets/Makefile -f -
 	sops --encrypt --output-type yaml --indent 2 \
 		--output "$secrets_file" build/secrets.nix
 	popd >/dev/null
