@@ -442,40 +442,54 @@ cmd_secrets_edit() {
 		eval_secrets "$flake" <<EOF >build/secrets.json
 let
   inherit (flake.nixverse) lib lib' entities;
+  nodesSecrets =
+    let
+      removeHiddenSecrets = attrs:
+        if lib.isAttrs attrs then
+          lib.concatMapAttrs (
+            k: v:
+            let
+              removed = removeHiddenSecrets v;
+            in
+            lib.optionalAttrs (!lib.hasPrefix "_" k && removed != {}) { \${k} = removed; }
+          )  attrs
+        else if lib.isList attrs then
+          map removeHiddenSecrets attrs
+        else
+          attrs;
+    in
+    lib.concatMapAttrs (
+      entityName: entitySecrets:
+      lib.optionalAttrs (entities.\${entityName}.type == "node") {
+        \${entityName} = removeHiddenSecrets entitySecrets;
+      }
+    ) secrets.nodes;
 in
 builtins.toJSON {
-  nodes = lib.concatMapAttrs (
-    entityName: entitySecrets:
-    lib.optionalAttrs (entities.\${entityName}.type == "node") {
-      \${entityName} = lib.concatMapAttrs (
-        k: v:
-        lib.optionalAttrs (!lib.hasPrefix "_" k) { \${k} = v; }
-      ) entitySecrets;
-    }
-  ) secrets.nodes;
+  nodes = nodesSecrets;
   makefile = ''
     all: \${lib.concatStringsSep "\\\\\\n" (lib'.concatMapAttrsToList (
       nodeName: _:
       let
-        entity = entities.\${nodeName};
+        node = entities.\${nodeName};
       in
-      lib.optionals (entity.type == "node") [
-        "\$(private_dir)\${entity.dir}/secrets.yaml"
-        "build/\${entity.dir}/ssh_host_ed25519_key"
-        "\$(private_dir)\${entity.dir}/ssh_host_ed25519_key"
-        "\$(private_dir)\${entity.dir}/ssh_host_ed25519_key.pub"
+      [
+        "\$(private_dir)\${node.dir}/secrets.yaml"
+        "build/\${node.dir}/ssh_host_ed25519_key"
+        "\$(private_dir)\${node.dir}/ssh_host_ed25519_key"
+        "\$(private_dir)\${node.dir}/ssh_host_ed25519_key.pub"
       ]
-    ) secrets.nodes)}
+    ) nodesSecrets)}
     \${lib.concatStringsSep "\\\\\\n" (lib'.concatMapAttrsToList (
       nodeName: _:
       let
-        entity = entities.\${nodeName};
+        node = entities.\${nodeName};
       in
-      lib.optionals (entity.type == "node") [
-        "\$(private_dir)\${entity.dir}"
-        "build/\${entity.dir}"
+      [
+        "\$(private_dir)\${node.dir}"
+        "build/\${node.dir}"
       ]
-    ) secrets.nodes)}:
+    ) nodesSecrets)}:
     	mdir -p \$@
   '';
 }
@@ -718,7 +732,7 @@ eval_secrets() {
 	local secrets
 	secrets=$(sops --decrypt --output-type binary "$secrets_file")
 
-	eval_flake "$flake" <<EOF >build/secrets.json.new
+	eval_flake "$flake" <<EOF
 let
   secrets =
     let
