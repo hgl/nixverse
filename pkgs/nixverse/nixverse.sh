@@ -259,8 +259,13 @@ cmd_node_deploy() {
 	local flake
 	flake=$(find_flake)
 	make_flake "$flake" "$@"
+
 	parallel-run "$parallel" <(
 		eval_nixverse "$flake" "$@" <<EOF
+let
+  localNodeNames = lib.filter (nodeName: entities.\${nodeName}.deploy.targetHost == null) nodeNames;
+in
+assert lib.assertMsg (lib.length localNodeNames <= 1) "Deploying multiple local nodes in parallel is not allowed";
 builtins.toJSON (map (
   nodeName:
   let
@@ -271,15 +276,14 @@ builtins.toJSON (map (
     useRemoteSudo = lib.optionalString (node.deploy.useRemoteSudo) "--use-remote-sudo";
     sshOpts = "NIX_SSHOPTS=\${lib.escapeShellArg (map (opt: "-o \${lib.escapeShellArg opt}") node.deploy.sshOpts)}";
     common = "--flake \${lib.escapeShellArg "$flake?submodules=1#\${nodeName}"} --show-trace";
-  in
-  assert lib.assertMsg (lib.length nodeNames != 1 -> node.deploy.targetHost != null)
-    "Deploying multiple local nodes in parallel is not allowed";
-  {
-    name = nodeName;
-    command = {
+    rebuild = {
       nixos = "\${sshOpts} nixos-rebuild-ng switch \${targetHost} \${buildHost} \${useSubstitutes} \${useRemoteSudo} \${common}";
       darwin = "sudo darwin-rebuild switch \${common}";
     }.\${node.os};
+  in
+  {
+    name = nodeName;
+    command = rebuild;
   }
 ) nodeNames)
 EOF

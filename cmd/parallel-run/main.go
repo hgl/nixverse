@@ -39,13 +39,8 @@ func (job *job) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp("", "*")
-	if err != nil {
-		return err
-	}
 	job.name = v.Name
 	job.command = v.Command
-	job.file = f
 	job.nameWidth = ansi.StringWidth(job.name)
 	return nil
 }
@@ -85,7 +80,7 @@ func (d itemDelegate) Height() int                             { return 1 }
 func (d itemDelegate) Spacing() int                            { return 0 }
 func (d itemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
 func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
-	job := listItem.(job)
+	job := listItem.(*job)
 	name := lipgloss.NewStyle().
 		Bold(true).
 		PaddingRight(job.maxNameWidth - job.nameWidth).
@@ -142,25 +137,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.SetSize(msg.Width, height)
 		return m, nil
 	case jobLatestLineMsg:
-		job := m.list.Items()[msg.index].(job)
+		job := m.list.Items()[msg.index].(*job)
 		job.latestLine = msg.text
 		job.status = jobStatusRunning
 		m.list.SetItem(msg.index, job)
 		return m, m.nextStatus
 	case jobMetaErrorMsg:
-		job := m.list.Items()[msg.index].(job)
+		job := m.list.Items()[msg.index].(*job)
 		job.status = jobStatusRunError
 		job.err = msg.err
 		m.list.SetItem(msg.index, job)
 		return m, m.nextStatus
 	case jobFailedMsg:
 		m.failedJobs = append(m.failedJobs, msg.index)
-		job := m.list.Items()[msg.index].(job)
+		job := m.list.Items()[msg.index].(*job)
 		job.status = jobStatusRunError
 		m.list.SetItem(msg.index, job)
 		return m, m.nextStatus
 	case jobSucceededMsg:
-		job := m.list.Items()[msg.index].(job)
+		job := m.list.Items()[msg.index].(*job)
 		job.status = jobStatusSucceeded
 		m.list.SetItem(msg.index, job)
 		return m, m.nextStatus
@@ -209,18 +204,33 @@ func run() error {
 		return cmd.Run()
 	}
 
+	items := make([]list.Item, len(jobs))
+	cmds := make([]*exec.Cmd, len(jobs))
 	maxWidth := 0
-	for _, job := range jobs {
-		defer job.file.Close()
+	for i, job := range jobs {
+		f, err := os.CreateTemp("", "*")
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		job.file = f
+
+		items[i] = list.Item(job)
+
+		cmd := exec.CommandContext(ctx, "bash", "-c", job.command)
+		cmds[i] = cmd
+		defer func() {
+			if cmd.Process != nil {
+				cmd.Process.Signal(os.Interrupt)
+			}
+		}()
 		if job.nameWidth > maxWidth {
 			maxWidth = job.nameWidth
 		}
 	}
 
-	items := make([]list.Item, len(jobs))
-	for i, job := range jobs {
+	for _, job := range jobs {
 		job.maxNameWidth = maxWidth
-		items[i] = list.Item(job)
 	}
 
 	var wg sync.WaitGroup
@@ -235,7 +245,7 @@ func run() error {
 				continue
 			}
 
-			cmd := exec.CommandContext(ctx, "bash", "-c", job.command)
+			cmd := cmds[i]
 			pr, pw := io.Pipe()
 			cmd.Stdout = pw
 			cmd.Stderr = pw
