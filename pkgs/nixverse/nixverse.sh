@@ -542,7 +542,7 @@ cmd_secrets_encrypt() {
 
 	local node_name=''
 	local in_type=''
-	local out_type=yaml
+	local out_type=''
 	local in_place=''
 	local out=''
 	while true; do
@@ -635,6 +635,9 @@ EOF
 	if [[ -n $in_type ]]; then
 		args+=(--input-type "$in_type")
 	fi
+	if [[ -n $out_type ]]; then
+		args+=(--output-type "$out_type")
+	fi
 	if [[ -n $in_place ]]; then
 		args+=(--in-place)
 	elif [[ -n $out ]]; then
@@ -643,7 +646,7 @@ EOF
 	if [[ $file = - ]]; then
 		file=/dev/stdin
 	fi
-	sops --encrypt --output-type "$out_type" "${args[@]}" "$file"
+	sops --encrypt "${args[@]}" "$file"
 }
 
 cmd_help_secrets_decrypt() {
@@ -668,7 +671,7 @@ cmd_secrets_decrypt() {
 	unset args
 
 	local node_name=''
-	local in_type=yaml
+	local in_type=''
 	local in_place=''
 	local out=''
 	while true; do
@@ -750,7 +753,10 @@ EOF
 		fi
 	fi
 
-	local args=(--input-type "$in_type")
+	local args=()
+	if [[ -n $in_type ]]; then
+		args+=(--input-type "$in_type")
+	fi
 	if [[ -n $in_place ]]; then
 		args+=(--in-place)
 	elif [[ -n $out ]]; then

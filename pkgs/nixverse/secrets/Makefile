@@ -59,12 +59,12 @@ $(private_dir)nodes/%/ssh_host_ed25519_key.pub: build/nodes/%/ssh_host_ed25519_k
 
 build/nodes/%/ssh_host_ed25519_key: $(private_dir)nodes/%/ssh_host_ed25519_key | build/nodes/%
 	umask a=,u=rw
-	sops decrypt --input-type yaml --output $@ $<
+	sops decrypt --output $@ $<
 
 $(private_dir)nodes/%/ssh_host_ed25519_key: | $(private_dir)nodes/%
 	if $(if $(private_dir),[[ -e nodes/$*/ssh_host_ed25519_key && ! -e $@ ]],false); then
 		mv nodes/$*/ssh_host_ed25519_key $@
 	else
 		ssh-keygen -t ed25519 -N '' -C '' -f $@
-		sops --encrypt --output-type yaml --indent 2 --in-place $@
+		sops --encrypt --indent 2 --in-place $@
 	fi
