@@ -151,21 +151,9 @@ let
         }, required by node ${nodeName}";
       {
         imports = [ inputs.sops-nix.modules.sops ];
-        sops = {
-          age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-        }
-        // lib.optionalAttrs (secretsPaths != null) {
+        sops = lib.optionalAttrs (secretsPaths != null) {
           defaultSopsFile = lib.mkDefault secretsPaths;
         };
-      }
-      // lib.optionalAttrs (os == "nixos") {
-        services.openssh.hostKeys = [
-          {
-            bits = 4096;
-            path = "/etc/ssh/ssh_host_rsa_key";
-            type = "rsa";
-          }
-        ];
       }
     )
     ++ lib.optional (homeFiles != { }) (
