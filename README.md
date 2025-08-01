@@ -324,14 +324,8 @@ At runtime, `sops-nix` will write the password to a file, which be can be loaded
 ```diff
 # nodes/routers/common/configuration.nix
 {
-  boot.loader.systemd-boot.enable = true;
-  services.pppd = {
-    enable = true;
-    peers.wan.config = ''
-      plugin pppoe.so
-      name pppoe-username
-    '';
-  };
+  ...
+  services.pppd = ...
 + environment.etc."ppp/pap-secrets" = {
 +   mode = "0600";
 +   text = "pppoe-username * @${config.sops.secrets.pppoePassword.path} *";
@@ -423,11 +417,8 @@ We could import this module directly using a relative path, but that quickly bec
 }:
 {
 + imports = [ modules'.fish ];
-  programs.helix = {
-    enable = true;
-    defaultEditor = true;
-  };
-  home.stateVersion = osConfig.system.stateVersion;
+  programs.helix = ...
+  ...
 }
 ```
 
@@ -493,10 +484,7 @@ As a final step, we need to tell Nixverse the address of each machine to install
 ```diff
 # nodes/servers/group.nix
 {
-  common = {
-    os = "nixos";
-    channel = "unstable";
-  };
+  common = ...
   server1 = {
 +   install.targetHost = "1.1.1.1";
   };
@@ -509,10 +497,7 @@ As a final step, we need to tell Nixverse the address of each machine to install
 ```diff
 # nodes/routers/group.nix
 {
-  common = {
-    os = "nixos";
-    channel = "unstable";
-  };
+  common = ...
   router1 = {
 +   install.targetHost = "3.3.3.3";
   };
