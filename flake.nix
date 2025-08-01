@@ -47,10 +47,11 @@
         let
           nixverse = {
             path = ./template;
-            description = "Nixverse template";
+            description = "A minimal flake using Nixverse";
             welcomeText = ''
-              foobar
-              line2
+              A minimal flake using Nixverse has been created.
+
+              Update nodes/my-nodes to adapt to your own node.
             '';
           };
         in
