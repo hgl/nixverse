@@ -132,14 +132,36 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          tests =
+            pkgs.runCommandNoCC "tests"
+              {
+                nativeBuildInputs = [ nix-unit.packages.${system}.nix-unit ];
+                buildInputs = [ pkgs.cacert ];
+                key = "";
+              }
+              ''
+                export HOME="$(realpath .)"
+                nix-unit --eval-store "$HOME" --extra-experimental-features flakes \
+                ${
+                  toString (
+                    lib.mapAttrsToList (
+                      name: input: "--override-input ${lib.escapeShellArg name} ${lib.escapeShellArg input}"
+                    ) (lib.removeAttrs inputs [ "self" ])
+                  )
+                } --show-trace --flake ${self}#tests
+                echo -n "$key" > $out
+              '';
+          key =
+            # Discarding string context is safe, because we're not trying to read any store path contents.
+            "check derived from ${baseNameOf (builtins.unsafeDiscardStringContext tests.drvPath)} is ok\n";
         in
         {
-          tests = pkgs.runCommand "tests" { nativeBuildInputs = [ nix-unit.packages.${system}.nix-unit ]; } ''
-            export HOME="$(realpath .)"
-            nix-unit --eval-store "$HOME" --extra-experimental-features flakes \
-              --override-input nixpkgs ${nixpkgs} --show-trace --flake ${self}#tests
-            touch $out
-          '';
+          tests = tests.overrideAttrs (old: {
+            inherit key;
+            outputHashAlgo = "sha256";
+            outputHashMode = "flat";
+            outputHash = builtins.hashString "sha256" key;
+          });
         }
       );
     };
