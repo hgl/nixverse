@@ -66,5 +66,5 @@ $(private_dir)nodes/%/ssh_host_ed25519_key: | $(private_dir)nodes/%
 		mv nodes/$*/ssh_host_ed25519_key $@
 	else
 		ssh-keygen -t ed25519 -N '' -C '' -f $@
-		sops --encrypt --indent 2 --in-place $@
+		sops --encrypt --output-type yaml --indent 2 --in-place $@
 	fi
