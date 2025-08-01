@@ -22,7 +22,7 @@ in
     import ./load {
       inherit lib lib' self;
       userFlake = flake;
-      # This argument needs to be explicitly passed by a user because of a nix limitation
+      # This argument needs to be explicitly passed because of a nix limitation
       # https://github.com/hercules-ci/flake-parts/issues/148
       userFlakePath = flakePath;
     };

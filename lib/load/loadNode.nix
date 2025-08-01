@@ -67,10 +67,10 @@ let
   inputs =
     let
       v = lib.concatMapAttrs (
-        name: input:
+        name: rawInput:
         let
-          input' =
-            lib.removeAttrs input [
+          input =
+            lib.removeAttrs rawInput [
               "nixosModules"
               "darwinModules"
               "homeManagerModules"
@@ -78,25 +78,25 @@ let
             // {
               modules =
                 {
-                  nixos = input.nixosModules or { };
-                  darwin = input.darwinModules or { };
+                  nixos = rawInput.nixosModules or { };
+                  darwin = rawInput.darwinModules or { };
                 }
                 .${os};
             }
             // {
-              homeModules = input.homeManagerModules or input.homeModules or { };
+              homeModules = rawInput.homeManagerModules or rawInput.homeModules or { };
             };
         in
         if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
-          { ${lib.removeSuffix "-${os}" name} = input'; }
+          { ${lib.removeSuffix "-${os}" name} = input; }
         else if channel != "unstable" && lib.hasSuffix "-unstable" name then
-          { ${name} = input'; }
+          { ${name} = input; }
         else if lib.hasSuffix "-${channel}-${os}" name then
-          { ${lib.removeSuffix "-${channel}-${os}" name} = input'; }
+          { ${lib.removeSuffix "-${channel}-${os}" name} = input; }
         else if lib.hasSuffix "-${channel}" name then
-          { ${lib.removeSuffix "-${channel}" name} = input'; }
+          { ${lib.removeSuffix "-${channel}" name} = input; }
         else if lib.hasSuffix "-any" name then
-          { ${lib.removeSuffix "-any" name} = input'; }
+          { ${lib.removeSuffix "-any" name} = input; }
         else
           { }
       ) userFlake.inputs;
