@@ -4,6 +4,8 @@ Filesystem-based nix flake framework for multi-node configurations, cascading se
 
 Nixverse eliminates 99% of your glue code by bringing Convention over Configuration to Nix — just like Rails did for web development. Simply place files in the right locations, and tools like `nixos-rebuild switch` will just work — no manual imports required.
 
+Note: Nixverse is still alpha software. It may be full of holes and APIs may be changed without backward-compatibility. I'd love to have people give it a try, but please keep that in mind. :)
+
 ## Features
 
 Nixverse is designed to manage all your nix configurations, so it’s uniquely positioned to offer a lot of features:
