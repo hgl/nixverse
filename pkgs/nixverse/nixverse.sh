@@ -518,6 +518,134 @@ EOF
 	popd >/dev/null
 }
 
+cmd_help_secrets_encrypt() {
+	cat <<EOF
+Usage: nixverse secrets encrypt [<option>...] <file>
+
+Encrypt the file using the master age key.
+If <file> is -, encrypt the stdin.
+
+Options:
+  -n, --node <name>       encrypt using the node's SSH host key instead
+  --in-type <type>        type of the input file: yaml, json, binary or dotenv
+  --out-type <type>       type of the output file: yaml, json, binary or dotenv
+  -i, --in-place          encrypt the file in-place
+  -o, --out <file>        output to <file> instead of stdout
+  -h, --help              show this help
+EOF
+}
+cmd_secrets_encrypt() {
+	local args
+	args=$(getopt -n nixverse -o 'hn:io:' --long 'help,node:,--in-type:,--out-type:,in-place,out:' -- "$@")
+	eval set -- "$args"
+	unset args
+
+	local node_name=''
+	local in_type=''
+	local out_type=yaml
+	local in_place=''
+	local out=''
+	while true; do
+		case $1 in
+		-n | --node)
+			node_name=$2
+			shift 2
+			;;
+		--in-type)
+			in_type=$2
+			shift 2
+			;;
+		--out-type)
+			out_type=$2
+			shift 2
+			;;
+		-i | --in-place)
+			in_place=1
+			shift
+			;;
+		-o | --out)
+			out=$2
+			shift 2
+			;;
+		-h | --help)
+			cmd help eval
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
+		esac
+	done
+	if [[ -n $out && -n $in_place ]]; then
+		echo >&2 "--in-place and --out can not both be specify"
+		exit 1
+	fi
+	if [[ $out = - ]]; then
+		out=''
+	fi
+
+	if [[ $# = 0 ]]; then
+		cmd help secrets encrypt >&2
+		return 1
+	elif [[ $# -gt 1 ]]; then
+		echo >&2 "Only one file can be specified"
+		exit 1
+	fi
+	local file=$1
+
+	local flake
+	flake=$(find_flake)
+	local key=''
+	if [[ -n $node_name ]]; then
+		local node_dir
+		{
+			read -r key
+			read -r node_dir
+		} < <(
+			eval_nixverse "$flake" "$node_name" <<EOF
+let
+  nodeName = lib.head nodeNames;
+  node = entities.\${nodeName};
+in
+assert lib.assertMsg (node.type == "node") "\${nodeName} is not a node but a group";
+lib.concatLines [
+  "build/\${node.dir}/age.pubkey"
+  node.dir
+]
+EOF
+		)
+
+		if [[ ! -e $key ]]; then
+			make -f @out@/lib/nixverse/secrets/Makefile -f - "$key" <<EOF
+build/$node_dir \$(private_dir)$node_dir:
+	mkdir -p \$@
+EOF
+		fi
+	fi
+
+	local args=()
+	if [[ -n $key ]]; then
+		args+=(--age "$(<"$key")")
+	fi
+	if [[ -n $in_type ]]; then
+		args+=(--input-type "$in_type")
+	fi
+	if [[ -n $in_place ]]; then
+		args+=(--in-place)
+	elif [[ -n $out ]]; then
+		args+=(--output "$out")
+	fi
+	if [[ $file = - ]]; then
+		file=/dev/stdin
+	fi
+	sops --encrypt --output-type "$out_type" "${args[@]}" "$file"
+}
+
 cmd_help_secrets_eval() {
 	cat <<EOF
 Usage: nixverse secrets eval [<option>...] <nix expression>
@@ -654,7 +782,7 @@ EOF
 	nproc=$(nproc)
 
 	# shellcheck disable=SC2086
-	nix --extra-experimental-features 'nix-command flakes' run "$flake#make" -- -j $((nproc + 1)) -C "$flake" -f <(
+	nix run "$flake#make" -- -j $((nproc + 1)) -C "$flake" -f <(
 		cat <<EOF
 $makefile
 -include Makefile
