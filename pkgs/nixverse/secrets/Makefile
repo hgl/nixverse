@@ -59,7 +59,7 @@ $(private_dir)nodes/%/ssh_host_ed25519_key.pub: build/nodes/%/ssh_host_ed25519_k
 
 build/nodes/%/ssh_host_ed25519_key: $(private_dir)nodes/%/ssh_host_ed25519_key | build/nodes/%
 	umask a=,u=rw
-	sops decrypt --output $@ $<
+	sops decrypt --input-type yaml --output $@ $<
 
 $(private_dir)nodes/%/ssh_host_ed25519_key: | $(private_dir)nodes/%
 	if $(if $(private_dir),[[ -e nodes/$*/ssh_host_ed25519_key && ! -e $@ ]],false); then

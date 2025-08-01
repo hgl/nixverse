@@ -600,11 +600,11 @@ cmd_secrets_encrypt() {
 
 	local flake
 	flake=$(find_flake)
-	local key=''
+	local pubkey=''
 	if [[ -n $node_name ]]; then
 		local node_dir
 		{
-			read -r key
+			read -r pubkey
 			read -r node_dir
 		} < <(
 			eval_nixverse "$flake" "$node_name" <<EOF
@@ -620,8 +620,8 @@ lib.concatLines [
 EOF
 		)
 
-		if [[ ! -e $key ]]; then
-			make -f @out@/lib/nixverse/secrets/Makefile -f - "$key" <<EOF
+		if [[ ! -e $pubkey ]]; then
+			make -f @out@/lib/nixverse/secrets/Makefile -f - "$pubkey" <<EOF
 build/$node_dir \$(private_dir)$node_dir:
 	mkdir -p \$@
 EOF
@@ -629,8 +629,8 @@ EOF
 	fi
 
 	local args=()
-	if [[ -n $key ]]; then
-		args+=(--age "$(<"$key")")
+	if [[ -n $pubkey ]]; then
+		args+=(--age "$(<"$pubkey")")
 	fi
 	if [[ -n $in_type ]]; then
 		args+=(--input-type "$in_type")
@@ -668,7 +668,7 @@ cmd_secrets_decrypt() {
 	unset args
 
 	local node_name=''
-	local in_type=''
+	local in_type=yaml
 	local in_place=''
 	local out=''
 	while true; do
@@ -750,13 +750,7 @@ EOF
 		fi
 	fi
 
-	local args=()
-	if [[ -n $key ]]; then
-		args+=(--age "$(<"$key")")
-	fi
-	if [[ -n $in_type ]]; then
-		args+=(--input-type "$in_type")
-	fi
+	local args=(--input-type "$in_type")
 	if [[ -n $in_place ]]; then
 		args+=(--in-place)
 	elif [[ -n $out ]]; then
@@ -765,7 +759,11 @@ EOF
 	if [[ $file = - ]]; then
 		file=/dev/stdin
 	fi
-	sops --decrypt "${args[@]}" "$file"
+	if [[ -z $key ]]; then
+		sops --decrypt "${args[@]}" "$file"
+	else
+		SOPS_AGE_KEY=$(<"$key") sops --decrypt "${args[@]}" "$file"
+	fi
 }
 
 cmd_help_secrets_eval() {
