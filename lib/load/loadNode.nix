@@ -144,16 +144,14 @@ let
         imports = [ inputs.disko.modules.disko ];
       }
     )
-    ++ lib.optional (sshHostKeyPath != null) (
+    ++ lib.optional (secretsPaths != null) (
       assert lib.assertMsg (inputs ? sops-nix)
         "Missing the flake input sops-nix-${channel}${
           lib.optionalString (channel != "unstable") "-${os}"
         }, required by node ${nodeName}";
       {
         imports = [ inputs.sops-nix.modules.sops ];
-        sops = lib.optionalAttrs (secretsPaths != null) {
-          defaultSopsFile = lib.mkDefault secretsPaths;
-        };
+        sops.defaultSopsFile = lib.mkDefault secretsPaths;
       }
     )
     ++ lib.optional (homeFiles != { }) (
