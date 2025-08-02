@@ -19,18 +19,21 @@ $(private_dir)nodes/%/secrets.yaml: build/secrets.json build/nodes/%/age.key bui
 	exist=''
 	if [[ -e $@ ]]; then
 		exist=1
-  ifneq ($(private_dir),)
-	elif [[ -e nodes/$*/secrets.yaml ]]; then
-  else
-	elif false; then
-  endif
-		mv nodes/$*/secrets.yaml $@
-		exist=1
+	else
+		if $(if $(private_dir),[[ -e nodes/$*/secrets.yaml ]],false); then
+			mv nodes/$*/secrets.yaml $@
+			exist=1
+		else
+			: >$@
+		fi
+		if git rev-parse --is-inside-work-tree >/dev/null; then
+			git add --intent-to-add --force $@
+		fi
 	fi
 	if [[ -n $$exist ]]; then
 		if
-			SOPS_AGE_KEY=$$(< $(word 2,$^)) sops --decrypt --indent 2 $@ |
-				yq --yaml-output |
+			SOPS_AGE_KEY=$$(< $(word 2,$^)) sops --config "$$SOPS_CONFIG" \
+				--decrypt --indent 2 $@ | yq --yaml-output |
 				cmp --quiet - $@.new
 		then
 			touch $@
@@ -41,10 +44,9 @@ $(private_dir)nodes/%/secrets.yaml: build/secrets.json build/nodes/%/age.key bui
 			exit 1
 		fi
 	fi
-	sops --encrypt --input-type yaml --output-type yaml --indent 2 \
-		--age "$$(< $(word 3,$^))" \
-		--output $@ \
-		$@.new
+	sops --config "$$SOPS_CONFIG" --encrypt --input-type yaml \
+		--output-type yaml --indent 2 --age "$$(< $(word 3,$^))" \
+		--output $@ $@.new
 build/nodes/%/age.key: build/nodes/%/ssh_host_ed25519_key
 	umask a=,u=rw
 	ssh-to-age -private-key -i $< -o $@
@@ -56,15 +58,21 @@ $(private_dir)nodes/%/ssh_host_ed25519_key.pub: build/nodes/%/ssh_host_ed25519_k
 		rm nodes/$*/ssh_host_ed25519_key.pub
 	fi
 	ssh-keygen -yf $< >$@
+	if git rev-parse --is-inside-work-tree >/dev/null; then
+		git add --intent-to-add --force $@
+	fi
 
 build/nodes/%/ssh_host_ed25519_key: $(private_dir)nodes/%/ssh_host_ed25519_key | build/nodes/%
 	umask a=,u=rw
-	sops decrypt --output $@ $<
+	sops --config "$$SOPS_CONFIG" decrypt --output $@ $<
 
 $(private_dir)nodes/%/ssh_host_ed25519_key: | $(private_dir)nodes/%
-	if $(if $(private_dir),[[ -e nodes/$*/ssh_host_ed25519_key && ! -e $@ ]],false); then
+	if $(if $(private_dir),[[ ! -e $@ && -e nodes/$*/ssh_host_ed25519_key ]],false); then
 		mv nodes/$*/ssh_host_ed25519_key $@
 	else
 		ssh-keygen -t ed25519 -N '' -C '' -f $@
-		sops --encrypt --indent 2 --in-place $@
+		sops --config "$$SOPS_CONFIG" --encrypt --indent 2 --in-place $@
+	fi
+	if git rev-parse --is-inside-work-tree >/dev/null; then
+		git add --intent-to-add --force $@
 	fi

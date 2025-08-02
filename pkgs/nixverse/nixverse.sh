@@ -401,47 +401,27 @@ cmd_secrets_edit() {
 
 	local flake
 	flake=$(find_flake)
+
+	local sops_config
+	sops_config=$(find_sops_config "$flake")
+
+	local secrets
+	secrets=$(find_secrets -i "$flake")
+
 	pushd "$flake" >/dev/null
-
-	local private_dir=''
-	if [[ -d private ]]; then
-		private_dir=private/
-	fi
-
-	local ssecrets_file_exist=1
-	local public_secrets_exist=''
-	local private_secrets_exist=''
-	if [[ -e secrets.yaml ]]; then
-		public_secrets_exist=1
-	fi
-	if [[ -e private/secrets.yaml ]]; then
-		private_secrets_exist=1
-	fi
-	if [[ -n $public_secrets_exist && -n $private_secrets_exist ]]; then
-		echo >&2 "Both $flake/secrets.yaml and $flake/private/secrets.yaml exist, only one is allowed"
-		return 1
-	elif [[ -n $public_secrets_exist && -n $private_dir ]]; then
-		mv secrets.yaml private/secrets.yaml
-		git add private/secrets.yaml
-	elif [[ -z $public_secrets_exist && -z $private_secrets_exist ]]; then
-		ssecrets_file_exist=''
-	fi
-	local secrets_file=${private_dir}secrets.yaml
-
 	mkdir -p build
-	if [[ -z $ssecrets_file_exist ]]; then
+	if [[ -z $secrets ]]; then
 		cp @out@/lib/nixverse/secrets/template.nix build/secrets.nix
 		chmod a=,u=rw build/secrets.nix
 	else
-		sops --decrypt --output-type binary \
-			--output build/secrets.nix "$secrets_file"
+		sops --config "$sops_config" --decrypt --output-type binary \
+			--output build/secrets.nix "$secrets"
 	fi
-
 	${SOPS_EDITOR:-${EDITOR:-vi}} build/secrets.nix
 	(
 		rm -f build/secrets.json
 		umask a=,u=rw
-		eval_secrets "$flake" <<EOF >build/secrets.json
+		eval_secrets "$flake" build/secrets.nix <<EOF >build/secrets.json
 let
   inherit (flake.nixverse) lib lib' entities;
   nodesSecrets =
@@ -492,18 +472,27 @@ builtins.toJSON {
         "build/\${node.dir}"
       ]
     ) nodesSecrets)}:
-    	mdir -p \$@
+    	mkdir -p \$@
   '';
 }
 EOF
 	)
 	trap 'rm -f build/secrets.json' EXIT
 	yq --raw-output .makefile build/secrets.json |
-		make --silent -f @out@/lib/nixverse/secrets/Makefile -f -
-	if [[ -z $ssecrets_file_exist ]]; then
-		:
+		SOPS_CONFIG=$sops_config make --silent \
+			-f @out@/lib/nixverse/secrets/Makefile -f -
+	if [[ -z $secrets ]]; then
+		if [[ -d private ]]; then
+			secrets=$flake/private/secrets.yaml
+		else
+			secrets=$flake/secrets.yaml
+		fi
+		: >"$secrets"
+		if git rev-parse --is-inside-work-tree >/dev/null; then
+			git add --intent-to-add --force "$secrets"
+		fi
 	elif
-		sops --decrypt --output-type binary "$secrets_file" |
+		sops --config "$sops_config" --decrypt --output-type binary "$secrets" |
 			cmp --quiet - build/secrets.nix
 	then
 		popd >/dev/null
@@ -514,7 +503,7 @@ EOF
 		exit 1
 	fi
 	sops --encrypt --output-type yaml --indent 2 \
-		--output "$secrets_file" build/secrets.nix
+		--output "$secrets" build/secrets.nix
 	popd >/dev/null
 }
 
@@ -765,11 +754,14 @@ EOF
 	if [[ $file = - ]]; then
 		file=/dev/stdin
 	fi
-	if [[ -z $key ]]; then
-		sops --decrypt "${args[@]}" "$file"
-	else
-		SOPS_AGE_KEY=$(<"$key") sops --decrypt "${args[@]}" "$file"
-	fi
+	(
+		umask a=,u=rw
+		if [[ -z $key ]]; then
+			sops --decrypt "${args[@]}" "$file"
+		else
+			SOPS_AGE_KEY=$(<"$key") sops --decrypt "${args[@]}" "$file"
+		fi
+	)
 }
 
 cmd_help_secrets_eval() {
@@ -818,7 +810,13 @@ cmd_secrets_eval() {
 	local flake
 	flake=$(find_flake)
 
-	eval_secrets "$flake" <<EOF
+	local sops_config
+	sops_config=$(find_sops_config "$flake")
+
+	local secrets
+	secrets=$(find_secrets "$flake")
+
+	eval_secrets "$flake" <(sops --config "$sops_config" --decrypt --output-type binary "$secrets") <<EOF
 let
   lib = flake.nixverse.inputs.nixpkgs-unstable.lib;
   lib' = flake.lib;
@@ -857,6 +855,58 @@ find_flake() {
 		fi
 		flake=$(dirname "$flake")
 	done
+}
+
+find_sops_config() {
+	local flake=$1
+
+	local sops_config=''
+	if [[ -e $flake/.sops.yaml ]]; then
+		sops_config=$flake/.sops.yaml
+	fi
+	if [[ -e $flake/private/.sops.yaml ]]; then
+		if [[ -n $sops_config ]]; then
+			echo >&2 "Both $flake/.sops.yaml and $flake/private/.sops.yaml exist, only one is allowed"
+		fi
+		sops_config=$flake/private/.sops.yaml
+	fi
+	if [[ -z $sops_config ]]; then
+		echo >&2 "Missing the .sops.yaml file"
+		return 1
+	fi
+	echo "$sops_config"
+}
+
+find_secrets() {
+	local ignore_nonexist=''
+	if [[ $1 == -i ]]; then
+		ignore_nonexist=1
+		shift
+	fi
+	local flake=$1
+
+	local secrets=''
+	if [[ -e $flake/secrets.yaml ]]; then
+		secrets=$flake/secrets.yaml
+	fi
+	if [[ -e $flake/private/secrets.yaml ]]; then
+		if [[ -n $secrets ]]; then
+			echo >&2 "Both $flake/secrets.yaml and $flake/private/secrets.yaml exist, only one is allowed"
+			return 1
+		fi
+		secrets=$flake/private/secrets.yaml
+	elif [[ -n $secrets && -d $flake/private ]]; then
+		secrets=$flake/private/secrets.yaml
+		mv "$flake/secrets.yaml" "$secrets"
+		if git rev-parse --is-inside-work-tree >/dev/null; then
+			git add --intent-to-add --force "$secrets"
+		fi
+	fi
+	if [[ -z $ignore_nonexist && -z $secrets ]]; then
+		echo >&2 "No secrets file exist, edit to create one"
+		return 1
+	fi
+	echo "$secrets"
 }
 
 make_flake() {
@@ -978,22 +1028,14 @@ EOF
 
 eval_secrets() {
 	local flake=$1
-	shift
-
-	local private_dir=''
-	if [[ -d private ]]; then
-		private_dir=private/
-	fi
-	local secrets_file=${private_dir}secrets.yaml
-	local secrets
-	secrets=$(sops --decrypt --output-type binary "$secrets_file")
+	local unencrypted_secrets_file=$2
 
 	eval_flake "$flake" <<EOF
 let
   secrets =
     let
       inherit (flake.nixverse) lib lib' entities nodes inputs;
-      raw = lib'.call ($secrets) {
+      raw = lib'.call ($(<"$unencrypted_secrets_file")) {
         lib = inputs.nixpkgs-unstable.lib;
         lib' = flake.lib;
         inherit secrets inputs nodes;

@@ -4,6 +4,7 @@
   nix,
   bash,
   coreutils,
+  git,
   util-linux, # for getopt
   gnumake,
   openssh,
@@ -41,6 +42,7 @@ runCommand "nixverse"
           nix
           bash
           coreutils
+          git
           util-linux
           gnumake
           openssh
