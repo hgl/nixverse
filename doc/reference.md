@@ -1,5 +1,9 @@
 # Nixverse Reference
 
+The reference is currently outdated. Please wait for a new version.
+
+The Quick Start section in README is update-to-date.
+
 Table of Contents
 
 1. [Installation](#installation)
