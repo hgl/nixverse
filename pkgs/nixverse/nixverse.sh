@@ -589,8 +589,12 @@ cmd_secrets_encrypt() {
 
 	local flake
 	flake=$(find_flake)
+
 	local pubkey=''
-	if [[ -n $node_name ]]; then
+	if [[ -z $node_name ]]; then
+		local sops_config
+		sops_config=$(find_sops_config "$flake")
+	else
 		local node_dir
 		{
 			read -r pubkey
@@ -610,7 +614,10 @@ EOF
 		)
 
 		if [[ ! -e $pubkey ]]; then
-			make -f @out@/lib/nixverse/secrets/Makefile -f - "$pubkey" <<EOF
+			local sops_config
+			sops_config=$(find_sops_config "$flake")
+			SOPS_CONFIG=$sops_config make \
+				-f @out@/lib/nixverse/secrets/Makefile -f - "$pubkey" <<EOF
 build/$node_dir \$(private_dir)$node_dir:
 	mkdir -p \$@
 EOF
@@ -618,7 +625,9 @@ EOF
 	fi
 
 	local args=()
-	if [[ -n $pubkey ]]; then
+	if [[ -z $pubkey ]]; then
+		args+=(--config "$sops_config")
+	else
 		args+=(--age "$(<"$pubkey")")
 	fi
 	if [[ -n $in_type ]]; then
@@ -714,6 +723,7 @@ cmd_secrets_decrypt() {
 
 	local flake
 	flake=$(find_flake)
+
 	local key=''
 	if [[ -n $node_name ]]; then
 		local node_dir
@@ -735,7 +745,11 @@ EOF
 		)
 
 		if [[ ! -e $key ]]; then
-			make -f @out@/lib/nixverse/secrets/Makefile -f - "$key" <<EOF
+			local sops_config
+			sops_config=$(find_sops_config "$flake")
+
+			SOPS_CONFIG=$sops_config make \
+				-f @out@/lib/nixverse/secrets/Makefile -f - "$key" <<EOF
 build/$node_dir \$(private_dir)$node_dir:
 	mkdir -p \$@
 EOF
