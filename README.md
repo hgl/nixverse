@@ -202,6 +202,8 @@ We’ll do the following:
 1. Define a Home Manager user and have it use a custom module.
 1. Install NixOS with this configuration to all machines in parallel.
 
+You might expect these steps to take a long time, but as you’ll see, Nixverse can significantly speed up the process.
+
 We first define the two groups:
 
 ```nix
@@ -488,10 +490,10 @@ As a final step, we need to tell Nixverse the address of each machine to install
 {
   common = ...
   server1 = {
-+   install.targetHost = "1.1.1.1";
++   deploy.targetHost = "1.1.1.1";
   };
   server2 = {
-+   install.targetHost = "2.2.2.2";
++   deploy.targetHost = "2.2.2.2";
   };
 }
 ```
@@ -501,13 +503,15 @@ As a final step, we need to tell Nixverse the address of each machine to install
 {
   common = ...
   router1 = {
-+   install.targetHost = "3.3.3.3";
++   deploy.targetHost = "3.3.3.3";
   };
   router2 = {
-+   install.targetHost = "4.4.4.4";
++   deploy.targetHost = "4.4.4.4";
   };
 }
 ```
+
+Notice we set `deploy.targetHost`. There is also `install.targetHost`, which defaults to `deploy.targetHost` if not explicitly set, to specify the address for installing specifically. This allows you to specify a different address for installation if needed. If the machine uses the same address for both installation and deployment, it’s best to set `deploy.targetHost` only — this way, you can run `node deploy` later without modifying any code.
 
 Now we’re ready to install the configured NixOS to all machines in parallel:
 
