@@ -6,7 +6,9 @@
 }:
 let
   outputs = lib'.load {
-    flake = userFlake;
+    inputs = userFlake.inputs // {
+      self = userFlake;
+    };
     flakePath = userFlake.outPath;
   };
 in

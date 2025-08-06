@@ -6,7 +6,7 @@
 }:
 let
   rawEntities = import ../../lib/load/rawEntities.nix {
-    inherit lib lib' userFlake;
+    inherit lib lib';
     userFlakePath = userFlake.outPath;
   };
 in

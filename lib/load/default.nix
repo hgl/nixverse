@@ -2,6 +2,7 @@
   lib,
   lib',
   self,
+  userInputs,
   userFlake,
   userFlakePath,
 }:
@@ -10,7 +11,7 @@ let
     inherit
       lib
       lib'
-      userFlake
+      userInputs
       userFlakePath
       ;
   };
@@ -19,7 +20,6 @@ let
       lib
       lib'
       self
-      userFlake
       userFlakePath
       ;
   };
@@ -27,7 +27,6 @@ let
     inherit
       lib
       lib'
-      userFlake
       userFlakePath
       ;
   };
@@ -54,7 +53,7 @@ let
         inherit
           lib
           lib'
-          userFlake
+          userInputs
           userFlakePath
           userLib
           userPkgs
@@ -78,7 +77,6 @@ let
     inherit
       lib
       lib'
-      userFlake
       userFlakePath
       ;
   };
@@ -87,6 +85,7 @@ let
       lib
       lib'
       self
+      userInputs
       userFlake
       userFlakePath
       userLib
@@ -97,4 +96,7 @@ let
       ;
   };
 in
+assert lib.assertMsg (
+  userInputs ? nixpkgs-unstable
+) "Missing the required flake input nixpkgs-unstable";
 userOutputs

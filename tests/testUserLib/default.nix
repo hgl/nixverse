@@ -6,7 +6,8 @@
 }:
 let
   userLib = import ../../lib/load/userLib.nix {
-    inherit lib lib' userFlake;
+    inherit lib lib';
+    userInputs = userFlake.inputs;
     userFlakePath = userFlake.outPath;
   };
 in

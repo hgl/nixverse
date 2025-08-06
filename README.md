@@ -37,10 +37,12 @@ Create `flake.nix` with the following content:
       inputs.nixpkgs.follows = "nixpkgs-unstable";
     };
   };
-  outputs = { self, nixverse, ... }: nixverse.lib.load {
-    flake = self;
-    flakePath = ./.;
-  };
+  outputs =
+    inputs@{ nixverse, ... }:
+    nixverse.lib.load {
+      inherit inputs;
+      flakePath = ./.;
+    };
 }
 ```
 

@@ -30,6 +30,8 @@
       ...
     }:
     {
-      deploy.targetHost = "${toString (lib ? concatLines)} ${lib'.bar} ${toString (inputs ? nixpkgs)} ${nodes.current.name} ${nodes.current.config.nixpkgs.hostPlatform.system}";
+      deploy.targetHost = "${toString (lib ? concatLines)} ${lib'.bar} ${
+        toString (inputs ? nixpkgs-unstable)
+      } ${nodes.current.name} ${nodes.current.config.nixpkgs.hostPlatform.system}";
     };
 }

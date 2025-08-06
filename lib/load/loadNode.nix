@@ -1,7 +1,7 @@
 {
   lib,
   lib',
-  userFlake,
+  userInputs,
   userFlakePath,
   userLib,
   userPkgs,
@@ -27,8 +27,8 @@ let
         (lib.evalModules {
           specialArgs = {
             lib' = userLib;
-            lib = userFlake.inputs.nixpkgs-unstable.lib;
-            inherit inputs;
+            lib = userInputs.nixpkgs-unstable.lib;
+            inputs = userInputs;
             nodes = nodesWithCurrent;
           };
           modules = [
@@ -49,8 +49,8 @@ let
                   lib
                   lib'
                   nodes
-                  inputs
                   ;
+                inputs = userInputs;
               }
             )
           ) rawEntity.defs;
@@ -64,42 +64,38 @@ let
         "warnings"
       ]
     );
-  inputs =
+  inputs' =
     let
       v = lib.concatMapAttrs (
-        name: rawInput:
+        name: userInput:
         let
-          input =
-            lib.removeAttrs rawInput [
+          input' =
+            lib.removeAttrs userInput [
               "nixosModules"
               "darwinModules"
-              "homeManagerModules"
             ]
             // {
               modules =
                 {
-                  nixos = rawInput.nixosModules or { };
-                  darwin = rawInput.darwinModules or { };
+                  nixos = userInput.nixosModules or { };
+                  darwin = userInput.darwinModules or { };
                 }
                 .${os};
-            }
-            // {
-              homeModules = rawInput.homeManagerModules or rawInput.homeModules or { };
             };
         in
         if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
-          { ${lib.removeSuffix "-${os}" name} = input; }
+          { ${lib.removeSuffix "-${os}" name} = input'; }
         else if channel != "unstable" && lib.hasSuffix "-unstable" name then
-          { ${name} = input; }
+          { ${name} = input'; }
         else if lib.hasSuffix "-${channel}-${os}" name then
-          { ${lib.removeSuffix "-${channel}-${os}" name} = input; }
+          { ${lib.removeSuffix "-${channel}-${os}" name} = input'; }
         else if lib.hasSuffix "-${channel}" name then
-          { ${lib.removeSuffix "-${channel}" name} = input; }
+          { ${lib.removeSuffix "-${channel}" name} = input'; }
         else if lib.hasSuffix "-any" name then
-          { ${lib.removeSuffix "-any" name} = input; }
+          { ${lib.removeSuffix "-any" name} = input'; }
         else
           { }
-      ) userFlake.inputs;
+      ) userInputs;
     in
     assert lib.assertMsg (v ? nixpkgs)
       "Missing the flake input nixpkgs-${channel}${
@@ -122,7 +118,7 @@ let
   configuration = mkConfiguration {
     specialArgs = {
       lib' = userLib;
-      inputs' = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) inputs;
+      inputs' = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) inputs';
       modules' = userModules.${os};
       nodes = nodesWithCurrent;
     }
@@ -136,45 +132,45 @@ let
     ++ recursiveFindFiles "hardware-configuration.nix"
     ++ diskConfigPaths
     ++ lib.optional (diskConfigPaths != [ ]) (
-      assert lib.assertMsg (inputs ? disko)
+      assert lib.assertMsg (inputs' ? disko)
         "Missing the flake input disko-${channel}${
           lib.optionalString (channel != "unstable") "-${os}"
         }, required by node ${nodeName}";
       {
-        imports = [ inputs.disko.modules.disko ];
+        imports = [ inputs'.disko.modules.disko ];
       }
     )
     ++ lib.optional (secretsPaths != null) (
-      assert lib.assertMsg (inputs ? sops-nix)
+      assert lib.assertMsg (inputs' ? sops-nix)
         "Missing the flake input sops-nix-${channel}${
           lib.optionalString (channel != "unstable") "-${os}"
         }, required by node ${nodeName}";
       {
-        imports = [ inputs.sops-nix.modules.sops ];
+        imports = [ inputs'.sops-nix.modules.sops ];
         sops.defaultSopsFile = lib.mkDefault secretsPaths;
       }
     )
     ++ lib.optional (homeFiles != { }) (
-      assert lib.assertMsg (inputs ? home-manager)
+      assert lib.assertMsg (inputs' ? home-manager)
         "Missing the flake input home-manager-${channel}${
           lib.optionalString (channel != "unstable") "-${os}"
         }, required by node ${nodeName}";
       (
         { pkgs', ... }:
         {
-          imports = [ inputs.home-manager.modules.home-manager ];
+          imports = [ inputs'.home-manager.modules.home-manager ];
           home-manager = {
             useGlobalPkgs = lib.mkDefault true;
             useUserPackages = lib.mkDefault true;
             extraSpecialArgs = {
               inherit lib';
               inputs' = lib.mapAttrs (
-                name: input:
-                lib.removeAttrs input [ "homeModules" ]
+                name: input':
+                lib.removeAttrs input' [ "homeModules" ]
                 // {
-                  modules = input.homeModules;
+                  modules = input'.homeModules;
                 }
-              ) inputs;
+              ) inputs';
               modules' = userModules.home;
               nodes = nodesWithCurrent;
             };
@@ -222,13 +218,13 @@ let
     if n == 0 then null else path;
   mkConfiguration =
     {
-      nixos = inputs.nixpkgs.lib.nixosSystem;
+      nixos = inputs'.nixpkgs.lib.nixosSystem;
       darwin =
-        assert lib.assertMsg (inputs ? nix-darwin)
+        assert lib.assertMsg (inputs' ? nix-darwin)
           "Missing the flake input nix-darwin-${channel}${
             lib.optionalString (channel != "unstable") "-${os}"
           }, required by node ${nodeName}";
-        inputs.nix-darwin.lib.darwinSystem;
+        inputs'.nix-darwin.lib.darwinSystem;
     }
     .${os};
   recursiveFindFiles =

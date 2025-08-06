@@ -2,7 +2,6 @@
   lib,
   lib',
   self,
-  userFlake,
   userFlakePath,
 }:
 pkgs:

@@ -2,6 +2,7 @@
   lib,
   lib',
   self,
+  userInputs,
   userFlake,
   userFlakePath,
   userLib,
@@ -36,9 +37,10 @@ let
     in
     flake-parts.lib.mkFlake
       {
-        inherit (userFlake) inputs;
-        specialArgs = {
+        inputs = userInputs // {
           self = userFlake;
+        };
+        specialArgs = {
           inherit nodes;
           nixosModules' = userModules.nixos;
           darwinModules' = userModules.darwin;
@@ -52,14 +54,14 @@ let
         ]
         ++ userFlakeModules;
         _module.args = {
-          lib = userFlake.inputs.nixpkgs-unstable.lib;
+          lib = userInputs.nixpkgs-unstable.lib;
           lib' = userLib;
           getPkgs' = userPkgs;
         };
         perSystem =
           { config, system, ... }:
           let
-            pkgs = userFlake.inputs.nixpkgs-unstable.legacyPackages.${system};
+            pkgs = userInputs.nixpkgs-unstable.legacyPackages.${system};
           in
           {
             _module.args = {
