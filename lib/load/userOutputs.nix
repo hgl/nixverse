@@ -6,10 +6,10 @@
   userFlake,
   userFlakePath,
   userLib,
-  userPkgs,
+  getUserPkgs,
   userModules,
+  userEntities,
   entities,
-  nodes,
 }:
 let
   userFlakeModules =
@@ -41,7 +41,7 @@ let
           self = userFlake;
         };
         specialArgs = {
-          inherit nodes;
+          nodes = userEntities;
           nixosModules' = userModules.nixos;
           darwinModules' = userModules.darwin;
           homeModules' = userModules.home;
@@ -56,7 +56,7 @@ let
         _module.args = {
           lib = userInputs.nixpkgs-unstable.lib;
           lib' = userLib;
-          getPkgs' = userPkgs;
+          getPkgs' = getUserPkgs;
         };
         perSystem =
           { config, system, ... }:
@@ -66,7 +66,7 @@ let
           {
             _module.args = {
               inherit pkgs;
-              pkgs' = userPkgs pkgs;
+              pkgs' = getUserPkgs pkgs;
             };
             apps = {
               nixverse = {
@@ -100,10 +100,31 @@ assert lib.assertMsg (
     inherit
       lib
       lib'
+      userEntities
       entities
-      nodes
       ;
     inherit (userFlake) inputs;
+    getSecrets = import ./getSecrets.nix {
+      inherit
+        lib
+        lib'
+        userInputs
+        userLib
+        userEntities
+        entities
+        ;
+    };
+  }
+  // import ../../pkgs/nixverse/output.nix {
+    inherit
+      lib
+      lib'
+      userLib
+      userInputs
+      userFlakePath
+      userEntities
+      entities
+      ;
   };
   nixosConfigurations = loadConfigurations "nixos";
   darwinConfigurations = loadConfigurations "darwin";

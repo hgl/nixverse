@@ -95,46 +95,66 @@ cmd_node_install() {
 
 	local flake
 	flake=$(find_flake)
-	make_flake "$flake" "$@"
-	parallel-run "$parallel" <(
-		eval_nixverse "$flake" "$@" <<EOF
-builtins.toJSON (map (
-  nodeName:
-  let
-    node = entities.\${nodeName};
-    buildOn = "--build-on \${if node.install.buildOnRemote then "remote" else "local"}";
-    useSubstitutes = lib.optionalString (!node.install.useSubstitutes) "--no-substitute-on-destination";
-    extraFiles = lib.optionalString (node.sshHostKeyPath != null) "--extra-files \\"\$tmpdir\\"";
-    cpFiles = lib.optionalString (node.sshHostKeyPath != null) ''
-      tmpdir=\$(mktemp --directory)
-      trap "rm -rf '\$tmpdir'" EXIT
-      mkdir -p "\$tmpdir/etc/ssh"
-      cp -p '$flake/build/\${node.dir}/ssh_host_ed25519_key' '\${node.sshHostKeyPath}.pub' "\$tmpdir/etc/ssh"
-    '';
-  in
-  assert lib.assertMsg (
-    node.os != "darwin"
-  ) "Deploy to the darwin node \${nodeName} directlt to install nix-darwin";
-  assert lib.assertMsg (
-    node.install.targetHost != null
-  ) "Missing meta configuration install.targetHost for node \${nodeName}";
-  assert lib.assertMsg (
-    node.diskConfigPaths != [ ]
-  ) "Missing disk-config.nix for node \${nodeName}";
-  {
-    name = nodeName;
-    command = ''
-      set -e
-      \${cpFiles}
-      nixos-anywhere --no-disko-deps \\
-        --flake '$flake?submodules=1#\${nodeName}' \\
-        --generate-hardware-config nixos-generate-config '$flake/\${node.dir}/hardware-configuration.nix' \\
-        \${buildOn} \${useSubstitutes} \${extraFiles} \${lib.escapeShellArg node.install.targetHost}
-    '';
-  }
-) nodeNames)
+
+	local sops_config
+	sops_config=$(find_sops_config "$flake")
+
+	decrypt_to_secrets_nix --flake "$flake" "$sops_config"
+
+	local dir
+	dir=$(
+		eval_flake --write "$flake" <<EOF
+let
+  inherit (flake.nixverse)
+    lib
+    getNodeNames
+    getNodesMakefile
+    getSecrets
+    getSecretsMakefile
+    getFSEntries
+    userMakefile
+    getNodeBuildCommands
+    ;
+  entityNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames entityNames;
+  secrets = getSecrets ($(<"$secrets_nix"));
+  secretsNodeNames = lib.intersectLists nodeNames secrets.nodeNames;
+in
+{
+  "nodes.mk" = getNodesMakefile nodeNames;
+  "secrets.mk" = getSecretsMakefile secretsNodeNames;
+  fsEntries = getFSEntries nodeNames;
+  "user.mk" = userMakefile;
+  "cmds.json" = builtins.toJSON (
+    getNodeInstallCommands nodeNames "$flake"
+  );
+}
 EOF
 	)
+	# shellcheck disable=SC2064
+	trap_add "rm -r '$dir'" EXIT
+
+	local nproc
+	nproc=$(nproc)
+
+	set -- "${@/#/nodes/}"
+	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
+		-f @out@/lib/nixverse/Makefile \
+		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
+		-f <(fs_makefile <"$dir/fsEntries") \
+		"$@"
+
+	if [[ -e $flake/Makefile || -e $flake/private/Makefile ]]; then
+		nix run "$flake#make" -- -j $((nproc + 1)) -C "$flake" -f <(
+			cat <<EOF
+include $dir/user.mk
+-include Makefile
+-include private/Makefile
+EOF
+		) "$@"
+	fi
+
+	parallel-run "$parallel" "$dir/cmds.json"
 }
 
 cmd_help_node_build() {
@@ -187,25 +207,66 @@ cmd_node_build() {
 
 	local flake
 	flake=$(find_flake)
-	make_flake "$flake" "$@"
-	parallel-run "$parallel" <(
-		eval_nixverse "$flake" "$@" <<EOF
-builtins.toJSON (map (
-  nodeName:
-  let
-    node = entities.\${nodeName};
-    attrPath = {
-      nixos = "nixosConfigurations.\${nodeName}.config.system.build.toplevel";
-      darwin = "darwinConfigurations.\${nodeName}.system";
-    }.\${node.os};
-  in
-  {
-    name = nodeName;
-    command = "nix build --no-link --show-trace '$flake?submodules=1#\${attrPath}'";
-  }
-) nodeNames)
+
+	local sops_config
+	sops_config=$(find_sops_config "$flake")
+
+	decrypt_to_secrets_nix --flake "$flake" "$sops_config"
+
+	local dir
+	dir=$(
+		eval_flake --write "$flake" <<EOF
+let
+  inherit (flake.nixverse)
+    lib
+    getNodeNames
+    getNodesMakefile
+    getSecrets
+    getSecretsMakefile
+    getFSEntries
+    userMakefile
+    getNodeBuildCommands
+    ;
+  entityNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames entityNames;
+  secrets = getSecrets ($(<"$secrets_nix"));
+  secretsNodeNames = lib.intersectLists nodeNames secrets.nodeNames;
+in
+{
+  "nodes.mk" = getNodesMakefile nodeNames;
+  "secrets.mk" = getSecretsMakefile secretsNodeNames;
+  fsEntries = getFSEntries nodeNames;
+  "user.mk" = userMakefile;
+  "cmds.json" = builtins.toJSON (
+    getNodeBuildCommands nodeNames
+  );
+}
 EOF
 	)
+	# shellcheck disable=SC2064
+	trap_add "rm -r '$dir'" EXIT
+
+	local nproc
+	nproc=$(nproc)
+
+	set -- "${@/#/nodes/}"
+	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
+		-f @out@/lib/nixverse/Makefile \
+		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
+		-f <(fs_makefile <"$dir/fsEntries") \
+		"$@"
+
+	if [[ -e $flake/Makefile || -e $flake/private/Makefile ]]; then
+		nix run "$flake#make" -- -j $((nproc + 1)) -C "$flake" -f <(
+			cat <<EOF
+include $dir/user.mk
+-include Makefile
+-include private/Makefile
+EOF
+		) "$@"
+	fi
+
+	parallel-run "$parallel" "$dir/cmds.json"
 }
 
 cmd_help_node_deploy() {
@@ -258,38 +319,168 @@ cmd_node_deploy() {
 
 	local flake
 	flake=$(find_flake)
-	make_flake "$flake" "$@"
 
-	parallel-run "$parallel" <(
-		eval_nixverse "$flake" "$@" <<EOF
+	local sops_config
+	sops_config=$(find_sops_config "$flake")
+
+	decrypt_to_secrets_nix --flake "$flake" "$sops_config"
+
+	local dir
+	dir=$(
+		eval_flake --write "$flake" <<EOF
 let
-  localNodeNames = lib.filter (nodeName: entities.\${nodeName}.deploy.targetHost == null) nodeNames;
+  inherit (flake.nixverse)
+    lib
+    getNodeNames
+    getNodesMakefile
+    getSecrets
+    getSecretsMakefile
+    getFSEntries
+    userMakefile
+    getNodeDeployCommands
+    ;
+  entityNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames entityNames;
+  secrets = getSecrets ($(<"$secrets_nix"));
+  secretsNodeNames = lib.intersectLists nodeNames secrets.nodeNames;
 in
-assert lib.assertMsg (lib.length localNodeNames <= 1) "Deploying multiple local nodes in parallel is not allowed";
-builtins.toJSON (map (
-  nodeName:
-  let
-    node = entities.\${nodeName};
-    targetHost = lib.optionalString (node.deploy.targetHost != null) "--target-host \${lib.escapeShellArg node.deploy.targetHost}";
-    buildHost = lib.optionalString (node.deploy.targetHost != null && node.deploy.buildOnRemote) "--build-host \${lib.escapeShellArg node.deploy.targetHost}";
-    useSubstitutes = lib.optionalString (node.deploy.useSubstitutes) "--use-substitutes";
-    useRemoteSudo = lib.optionalString (node.deploy.useRemoteSudo) "--use-remote-sudo";
-    sshOpts = "NIX_SSHOPTS=\${lib.escapeShellArg (map (opt: "-o \${lib.escapeShellArg opt}") node.deploy.sshOpts)}";
-    common = "--flake \${lib.escapeShellArg "$flake?submodules=1#\${nodeName}"} --show-trace";
-    rebuild = {
-      nixos = "\${sshOpts} nixos-rebuild-ng switch \${targetHost} \${buildHost} \${useSubstitutes} \${useRemoteSudo} \${common}";
-      darwin = "sudo darwin-rebuild switch \${common}";
-    }.\${node.os};
-  in
-  {
-    name = nodeName;
-    command = rebuild;
-  }
-) nodeNames)
+{
+  "nodes.mk" = getNodesMakefile nodeNames;
+  "secrets.mk" = getSecretsMakefile secretsNodeNames;
+  fsEntries = getFSEntries nodeNames;
+  "user.mk" = userMakefile;
+  "cmds.json" = builtins.toJSON (
+    getNodeDeployCommands nodeNames "$flake" "@out@"
+  );
+}
 EOF
 	)
+	# shellcheck disable=SC2064
+	trap_add "rm -r '$dir'" EXIT
+
+	local nproc
+	nproc=$(nproc)
+
+	set -- "${@/#/nodes/}"
+	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
+		-f @out@/lib/nixverse/Makefile \
+		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
+		-f <(fs_makefile <"$dir/fsEntries") \
+		"$@"
+
+	if [[ -e $flake/Makefile || -e $flake/private/Makefile ]]; then
+		nix run "$flake#make" -- -j $((nproc + 1)) -C "$flake" -f <(
+			cat <<EOF
+include $dir/user.mk
+-include Makefile
+-include private/Makefile
+EOF
+		) "$@"
+	fi
+
+	parallel-run "$parallel" "$dir/cmds.json"
 }
 
+cmd_node_rsync() {
+	local args
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
+	eval set -- "$args"
+	unset args
+
+	local parallel=$default_parallel
+	while true; do
+		case $1 in
+		-p | --parallel)
+			parallel=$2
+			if [[ $parallel = 0 || ! $parallel =~ ^[0-9]+$ ]]; then
+				echo >&2 "$1 must specify a positive number"
+				return 1
+			fi
+			shift 2
+			;;
+		-h | --help)
+			cmd help node rsync
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
+		esac
+	done
+
+	if [[ $# = 0 ]]; then
+		cmd help node rsync >&2
+		return 1
+	fi
+
+	local flake
+	flake=$(find_flake)
+
+	local sops_config
+	sops_config=$(find_sops_config "$flake")
+
+	decrypt_to_secrets_nix --flake "$flake" "$sops_config"
+
+	local dir
+	dir=$(
+		eval_flake --write "$flake" <<EOF
+let
+  inherit (flake.nixverse)
+    lib
+    getNodeNames
+    getNodesMakefile
+    getSecrets
+    getSecretsMakefile
+    getFSEntries
+    userMakefile
+    getNodeRsyncCommands
+    ;
+  entityNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames entityNames;
+  secrets = getSecrets ($(<"$secrets_nix"));
+  secretsNodeNames = lib.intersectLists nodeNames secrets.nodeNames;
+in
+{
+  "nodes.mk" = getNodesMakefile nodeNames;
+  "secrets.mk" = getSecretsMakefile secretsNodeNames;
+  fsEntries = getFSEntries nodeNames;
+  "user.mk" = userMakefile;
+  "cmds.json" = builtins.toJSON (
+    getNodeRsyncCommands nodeNames "$flake" "@out@"
+  );
+}
+EOF
+	)
+	# shellcheck disable=SC2064
+	trap_add "rm -r '$dir'" EXIT
+
+	local nproc
+	nproc=$(nproc)
+
+	set -- "${@/#/nodes/}"
+	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
+		-f @out@/lib/nixverse/Makefile \
+		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
+		-f <(fs_makefile <"$dir/fsEntries") \
+		"$@"
+
+	if [[ -e $flake/Makefile || -e $flake/private/Makefile ]]; then
+		nix run "$flake#make" -- -j $((nproc + 1)) -C "$flake" -f <(
+			cat <<EOF
+include $dir/user.mk
+-include Makefile
+-include private/Makefile
+EOF
+		) "$@"
+	fi
+
+	parallel-run "$parallel" "$dir/cmds.json"
+}
 cmd_help_eval() {
 	cat <<EOF
 Usage: nixverse eval [<option>...] <nix expression>
@@ -332,6 +523,8 @@ cmd_eval() {
 		return 1
 	fi
 
+	local expr=$1
+
 	local flake
 	flake=$(find_flake)
 
@@ -339,9 +532,10 @@ cmd_eval() {
 let
   lib = flake.nixverse.inputs.nixpkgs-unstable.lib;
   lib' = flake.lib;
-  inherit (flake.nixverse) inputs nodes;
+  inherit (flake.nixverse) inputs;
+  nodes = flake.nixverse.userEntities;
 in
-$*
+$expr
 EOF
 }
 
@@ -402,109 +596,77 @@ cmd_secrets_edit() {
 	local flake
 	flake=$(find_flake)
 
+	local secrets_yaml
+	secrets_yaml=$(find_secrets_yaml -i "$flake")
+
 	local sops_config
 	sops_config=$(find_sops_config "$flake")
 
-	local secrets
-	secrets=$(find_secrets -i "$flake")
-
 	pushd "$flake" >/dev/null
-	mkdir -p build
-	if [[ -z $secrets ]]; then
-		cp @out@/lib/nixverse/secrets/template.nix build/secrets.nix
-		chmod a=,u=rw build/secrets.nix
+	if [[ -z $secrets_yaml ]]; then
+		mkdir -p build
+		cp @out@/lib/nixverse/secrets-template.nix "$secrets_nix"
+		chmod a=,u=rw "$secrets_nix"
 	else
-		sops --config "$sops_config" --decrypt --output-type binary \
-			--output build/secrets.nix "$secrets"
+		decrypt_to_secrets_nix "$sops_config" "$secrets_yaml"
 	fi
-	${SOPS_EDITOR:-${EDITOR:-vi}} build/secrets.nix
-	(
-		rm -f build/secrets.json
+	${SOPS_EDITOR:-${EDITOR:-vi}} "$secrets_nix"
+	if [[ -z $secrets_yaml ]]; then
+		if [[ -d private ]]; then
+			secrets_yaml=$flake/private/secrets.yaml
+		else
+			secrets_yaml=$flake/secrets.yaml
+		fi
+		: >"$secrets_yaml"
+		if git rev-parse --is-inside-work-tree >/dev/null; then
+			git add --intent-to-add --force "$secrets_yaml"
+		fi
+	fi
+
+	local dir
+	dir=$(
 		umask a=,u=rw
-		eval_secrets "$flake" build/secrets.nix <<EOF >build/secrets.json
+		eval_flake --write "$flake" <<EOF
 let
-  inherit (flake.nixverse) lib lib' entities;
-  nodesSecrets =
-    let
-      removeHiddenSecrets = attrs:
-        if lib.isAttrs attrs then
-          lib.concatMapAttrs (
-            k: v:
-            let
-              removed = removeHiddenSecrets v;
-            in
-            lib.optionalAttrs (!lib.hasPrefix "_" k && removed != {}) { \${k} = removed; }
-          )  attrs
-        else if lib.isList attrs then
-          map removeHiddenSecrets attrs
-        else
-          attrs;
-    in
-    lib.concatMapAttrs (
-      entityName: entitySecrets:
-      lib.optionalAttrs (entities.\${entityName}.type == "node") {
-        \${entityName} = removeHiddenSecrets entitySecrets;
-      }
-    ) secrets.nodes;
+  inherit (flake.nixverse)
+    getNodesMakefile
+    getSecrets
+    getSecretsMakefile
+    getNodesSecrets
+    ;
+  secrets = getSecrets ($(<"$secrets_nix"));
 in
-builtins.toJSON {
-  nodes = nodesSecrets;
-  makefile = ''
-    all: \${lib.concatStringsSep "\\\\\\n" (lib'.concatMapAttrsToList (
-      nodeName: _:
-      let
-        node = entities.\${nodeName};
-      in
-      [
-        "\$(private_dir)\${node.dir}/secrets.yaml"
-        "build/\${node.dir}/ssh_host_ed25519_key"
-        "\$(private_dir)\${node.dir}/ssh_host_ed25519_key"
-        "\$(private_dir)\${node.dir}/ssh_host_ed25519_key.pub"
-      ]
-    ) nodesSecrets)}
-    \${lib.concatStringsSep "\\\\\\n" (lib'.concatMapAttrsToList (
-      nodeName: _:
-      let
-        node = entities.\${nodeName};
-      in
-      [
-        "\$(private_dir)\${node.dir}"
-        "build/\${node.dir}"
-      ]
-    ) nodesSecrets)}:
-    	mkdir -p \$@
-  '';
+{
+  "nodes.mk" = getNodesMakefile secrets.nodeNames;
+  "secrets.mk" = getSecretsMakefile secrets.nodeNames;
+  targets = toString (map (name: "nodes/\${name}") secrets.nodeNames);
+  "secrets.json" = builtins.toJSON secrets.config;
+  nodes = getNodesSecrets secrets.config secrets.nodeNames;
 }
 EOF
 	)
-	trap 'rm -f build/secrets.json' EXIT
-	yq --raw-output .makefile build/secrets.json |
-		SOPS_CONFIG=$sops_config make --silent \
-			-f @out@/lib/nixverse/secrets/Makefile -f -
-	if [[ -z $secrets ]]; then
-		if [[ -d private ]]; then
-			secrets=$flake/private/secrets.yaml
-		else
-			secrets=$flake/secrets.yaml
-		fi
-		: >"$secrets"
-		if git rev-parse --is-inside-work-tree >/dev/null; then
-			git add --intent-to-add --force "$secrets"
-		fi
-	elif
-		sops --config "$sops_config" --decrypt --output-type binary "$secrets" |
-			cmp --quiet - build/secrets.nix
-	then
-		popd >/dev/null
-		return
-	elif [[ $? = 1 ]]; then
-		:
-	else
-		exit 1
-	fi
-	sops --encrypt --output-type yaml --indent 2 \
-		--output "$secrets" build/secrets.nix
-	popd >/dev/null
+	# shellcheck disable=SC2064
+	trap_add "rm -r '$dir'" EXIT
+
+	mv "$dir/secrets.json" "$flake/build/secrets.json"
+
+	local f
+	for f in "$dir"/nodes/*/secrets.json; do
+		mv "$f" "build${f#"$dir"}"
+	done
+
+	local nproc
+	nproc=$(nproc)
+	local targets
+	targets=$(<"$dir/targets")
+	# shellcheck disable=SC2086
+	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
+		-f @out@/lib/nixverse/Makefile \
+		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
+		$targets
+
+	sops --config "$sops_config" --encrypt --output-type yaml --indent 2 \
+		--output "$secrets_yaml" "$secrets_nix"
 }
 
 cmd_help_secrets_encrypt() {
@@ -524,6 +686,150 @@ Options:
 EOF
 }
 cmd_secrets_encrypt() {
+	local args
+	args=$(getopt -n nixverse -o 'hn:io:' --long 'help,node:,--in-type:,--out-type:,in-place,indent:,out:' -- "$@")
+	eval set -- "$args"
+	unset args
+
+	local node_name=''
+	local in_type=''
+	local out_type=''
+	local in_place=''
+	local indent=2
+	local out=''
+	while true; do
+		case $1 in
+		-n | --node)
+			node_name=$2
+			shift 2
+			;;
+		--in-type)
+			in_type=$2
+			shift 2
+			;;
+		--out-type)
+			out_type=$2
+			shift 2
+			;;
+		-i | --in-place)
+			in_place=1
+			shift
+			;;
+		--indent)
+			indent=$1
+			shift 2
+			;;
+		-o | --out)
+			out=$2
+			shift 2
+			;;
+		-h | --help)
+			cmd help eval
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
+		esac
+	done
+	if [[ -n $out && -n $in_place ]]; then
+		echo >&2 "--in-place and --out can not both be specified"
+		exit 1
+	fi
+	if [[ $out = - ]]; then
+		out=''
+	fi
+
+	if [[ $# = 0 ]]; then
+		cmd help secrets encrypt >&2
+		return 1
+	elif [[ $# -gt 1 ]]; then
+		echo >&2 "Only one file can be specified"
+		exit 1
+	fi
+	local file=$1
+
+	local flake
+	flake=$(find_flake)
+
+	local sops_config
+	sops_config=$(find_sops_config "$flake")
+
+	local pubkey=''
+	if [[ -n $node_name ]]; then
+		pubkey=build/nodes/$node_name/age.pubkey
+		local dir
+		dir=$(
+			eval_flake --write "$flake" <<EOF
+let
+  inherit (flake.nixverse)
+    validNodeName
+    getNodesMakefile
+    getSecretsMakefile
+	;
+  nodeName = "$node_name";
+in
+assert validNodeName nodeName;
+{
+  "nodes.mk" = getNodesMakefile [ nodeName ];
+  "secrets.mk" = getSecretsMakefile [ nodeName ];
+}
+EOF
+		)
+		# shellcheck disable=SC2064
+		trap_add "rm -r '$dir'" EXIT
+
+		local nproc
+		nproc=$(nproc)
+
+		SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
+			-f @out@/lib/nixverse/Makefile \
+			-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
+			"$pubkey"
+	fi
+
+	local args=(--indent "$indent")
+	if [[ -n $pubkey ]]; then
+		args+=(--age "$(<"$pubkey")")
+	fi
+	if [[ -n $in_type ]]; then
+		args+=(--input-type "$in_type")
+	fi
+	if [[ -n $out_type ]]; then
+		args+=(--output-type "$out_type")
+	fi
+	if [[ -n $in_place ]]; then
+		args+=(--in-place)
+	elif [[ -n $out ]]; then
+		args+=(--output "$out")
+	fi
+	if [[ $file = - ]]; then
+		file=/dev/stdin
+	fi
+	sops --config "$sops_config" --encrypt "${args[@]}" "$file"
+}
+
+cmd_help_secrets_decrypt() {
+	cat <<EOF
+Usage: nixverse secrets decrypt [<option>...] <file>
+
+Decrypt the file using the master age key.
+If <file> is -, decrypt the stdin.
+
+Options:
+  -n, --node <name>       decrypt using the node's SSH host key instead
+  --in-type <type>        type of the input file: yaml, json, binary or dotenv
+  -i, --in-place          decrypt the file in-place
+  -o, --out <file>        output to <file> instead of stdout
+  -h, --help              show this help
+EOF
+}
+cmd_secrets_decrypt() {
 	local args
 	args=$(getopt -n nixverse -o 'hn:io:' --long 'help,node:,--in-type:,--out-type:,in-place,out:' -- "$@")
 	eval set -- "$args"
@@ -579,7 +885,7 @@ cmd_secrets_encrypt() {
 	fi
 
 	if [[ $# = 0 ]]; then
-		cmd help secrets encrypt >&2
+		cmd help secrets decrypt >&2
 		return 1
 	elif [[ $# -gt 1 ]]; then
 		echo >&2 "Only one file can be specified"
@@ -590,46 +896,43 @@ cmd_secrets_encrypt() {
 	local flake
 	flake=$(find_flake)
 
-	local pubkey=''
-	if [[ -z $node_name ]]; then
-		local sops_config
-		sops_config=$(find_sops_config "$flake")
-	else
-		local node_dir
-		{
-			read -r pubkey
-			read -r node_dir
-		} < <(
-			eval_nixverse "$flake" "$node_name" <<EOF
+	local sops_config
+	sops_config=$(find_sops_config "$flake")
+
+	local key=''
+	if [[ -n $node_name ]]; then
+		key=build/nodes/$node_name/age.key
+		local dir
+		dir=$(
+			eval_flake --write "$flake" <<EOF
 let
-  nodeName = lib.head nodeNames;
-  node = entities.\${nodeName};
+  inherit (flake.nixverse)
+    validNodeName
+    getNodesMakefile
+    getSecretsMakefile
+    ;
+  nodeName = "$node_name";
 in
-assert lib.assertMsg (node.type == "node") "\${nodeName} is not a node but a group";
-lib.concatLines [
-  "build/\${node.dir}/age.pubkey"
-  node.dir
-]
+assert validNodeName nodeName;
+{
+  "nodes.mk" = getNodesMakefile [ nodeName ];
+  "secrets.mk" = getSecretsMakefile [ nodeName ];
+}
 EOF
 		)
+		# shellcheck disable=SC2064
+		trap_add "rm -r '$dir'" EXIT
 
-		if [[ ! -e $pubkey ]]; then
-			local sops_config
-			sops_config=$(find_sops_config "$flake")
-			SOPS_CONFIG=$sops_config make \
-				-f @out@/lib/nixverse/secrets/Makefile -f - "$pubkey" <<EOF
-build/$node_dir \$(private_dir)$node_dir:
-	mkdir -p \$@
-EOF
-		fi
+		local nproc
+		nproc=$(nproc)
+
+		SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
+			-f @out@/lib/nixverse/Makefile \
+			-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
+			"$key"
 	fi
 
 	local args=()
-	if [[ -z $pubkey ]]; then
-		args+=(--config "$sops_config")
-	else
-		args+=(--age "$(<"$pubkey")")
-	fi
 	if [[ -n $in_type ]]; then
 		args+=(--input-type "$in_type")
 	fi
@@ -644,136 +947,12 @@ EOF
 	if [[ $file = - ]]; then
 		file=/dev/stdin
 	fi
-	sops --encrypt "${args[@]}" "$file"
-}
-
-cmd_help_secrets_decrypt() {
-	cat <<EOF
-Usage: nixverse secrets decrypt [<option>...] <file>
-
-Decrypt the file using the master age key.
-If <file> is -, decrypt the stdin.
-
-Options:
-  -n, --node <name>       decrypt using the node's SSH host key instead
-  --in-type <type>        type of the input file: yaml, json, binary or dotenv
-  -i, --in-place          decrypt the file in-place
-  -o, --out <file>        output to <file> instead of stdout
-  -h, --help              show this help
-EOF
-}
-cmd_secrets_decrypt() {
-	local args
-	args=$(getopt -n nixverse -o 'hn:io:' --long 'help,node:,--in-type:,in-place,out:' -- "$@")
-	eval set -- "$args"
-	unset args
-
-	local node_name=''
-	local in_type=''
-	local in_place=''
-	local out=''
-	while true; do
-		case $1 in
-		-n | --node)
-			node_name=$2
-			shift 2
-			;;
-		--in-type)
-			in_type=$2
-			shift 2
-			;;
-		-i | --in-place)
-			in_place=1
-			shift
-			;;
-		-o | --out)
-			out=$2
-			shift 2
-			;;
-		-h | --help)
-			cmd help eval
-			return
-			;;
-		--)
-			shift
-			break
-			;;
-		*)
-			echo >&2 "Unhandled flag $1"
-			return 1
-			;;
-		esac
-	done
-	if [[ -n $out && -n $in_place ]]; then
-		echo >&2 "--in-place and --out can not both be specified"
-		exit 1
-	fi
-	if [[ $out = - ]]; then
-		out=''
-	fi
-
-	if [[ $# = 0 ]]; then
-		cmd help secrets decrypt >&2
-		return 1
-	elif [[ $# -gt 1 ]]; then
-		echo >&2 "Only one file can be specified"
-		exit 1
-	fi
-	local file=$1
-
-	local flake
-	flake=$(find_flake)
-
-	local key=''
-	if [[ -n $node_name ]]; then
-		local node_dir
-		{
-			read -r key
-			read -r node_dir
-		} < <(
-			eval_nixverse "$flake" "$node_name" <<EOF
-let
-  nodeName = lib.head nodeNames;
-  node = entities.\${nodeName};
-in
-assert lib.assertMsg (node.type == "node") "\${nodeName} is not a node but a group";
-lib.concatLines [
-  "build/\${node.dir}/age.key"
-  node.dir
-]
-EOF
-		)
-
-		if [[ ! -e $key ]]; then
-			local sops_config
-			sops_config=$(find_sops_config "$flake")
-
-			SOPS_CONFIG=$sops_config make \
-				-f @out@/lib/nixverse/secrets/Makefile -f - "$key" <<EOF
-build/$node_dir \$(private_dir)$node_dir:
-	mkdir -p \$@
-EOF
-		fi
-	fi
-
-	local args=()
-	if [[ -n $in_type ]]; then
-		args+=(--input-type "$in_type")
-	fi
-	if [[ -n $in_place ]]; then
-		args+=(--in-place)
-	elif [[ -n $out ]]; then
-		args+=(--output "$out")
-	fi
-	if [[ $file = - ]]; then
-		file=/dev/stdin
-	fi
 	(
 		umask a=,u=rw
 		if [[ -z $key ]]; then
-			sops --decrypt "${args[@]}" "$file"
+			sops --config "$sops_config" --decrypt "${args[@]}" "$file"
 		else
-			SOPS_AGE_KEY=$(<"$key") sops --decrypt "${args[@]}" "$file"
+			SOPS_AGE_KEY=$(<"$key") sops --config "$sops_config" decrypt "${args[@]}" "$file"
 		fi
 	)
 }
@@ -821,22 +1000,33 @@ cmd_secrets_eval() {
 		return 1
 	fi
 
+	local expr
+	expr=$1
+
 	local flake
 	flake=$(find_flake)
 
 	local sops_config
 	sops_config=$(find_sops_config "$flake")
 
-	local secrets
-	secrets=$(find_secrets "$flake")
+	local nproc
+	nproc=$(nproc)
 
-	eval_secrets "$flake" <(sops --config "$sops_config" --decrypt --output-type binary "$secrets") <<EOF
+	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" --silent \
+		-f @out@/lib/nixverse/Makefile \
+		build/secrets.json
+
+	eval_flake --impure . <<EOF
 let
   lib = flake.nixverse.inputs.nixpkgs-unstable.lib;
   lib' = flake.lib;
-  inherit (flake.nixverse) inputs nodes;
+  inherit (flake.nixverse) inputs;
+  nodes = flake.nixverse.userEntities;
+  secrets = builtins.fromJSON (
+    builtins.readFile "$(realpath --no-symlinks "$flake")/build/secrets.json"
+  );
 in
-$*
+$expr
 EOF
 }
 
@@ -848,379 +1038,7 @@ Show help for the command.
 EOF
 }
 
-find_flake() {
-	if [[ -n ${FLAKE-} ]]; then
-		if [[ ! -e $FLAKE/flake.nix ]]; then
-			echo >&2 "FLAKE is not a flake directory: $FLAKE"
-			return 1
-		fi
-		flake=$FLAKE
-		return
-	fi
-	flake=$PWD
-	while true; do
-		if [[ -e $flake/flake.nix ]]; then
-			echo "$flake"
-			return
-		fi
-		if [[ $flake = / ]]; then
-			echo >&2 "not in a flake directory: $PWD"
-			return 1
-		fi
-		flake=$(dirname "$flake")
-	done
-}
-
-find_sops_config() {
-	local flake=$1
-
-	local sops_config=''
-	if [[ -e $flake/.sops.yaml ]]; then
-		sops_config=$flake/.sops.yaml
-	fi
-	if [[ -e $flake/private/.sops.yaml ]]; then
-		if [[ -n $sops_config ]]; then
-			echo >&2 "Both $flake/.sops.yaml and $flake/private/.sops.yaml exist, only one is allowed"
-		fi
-		sops_config=$flake/private/.sops.yaml
-	fi
-	if [[ -z $sops_config ]]; then
-		echo >&2 "Missing the .sops.yaml file"
-		return 1
-	fi
-	echo "$sops_config"
-}
-
-find_secrets() {
-	local ignore_nonexist=''
-	if [[ $1 == -i ]]; then
-		ignore_nonexist=1
-		shift
-	fi
-	local flake=$1
-
-	local secrets=''
-	if [[ -e $flake/secrets.yaml ]]; then
-		secrets=$flake/secrets.yaml
-	fi
-	if [[ -e $flake/private/secrets.yaml ]]; then
-		if [[ -n $secrets ]]; then
-			echo >&2 "Both $flake/secrets.yaml and $flake/private/secrets.yaml exist, only one is allowed"
-			return 1
-		fi
-		secrets=$flake/private/secrets.yaml
-	elif [[ -n $secrets && -d $flake/private ]]; then
-		secrets=$flake/private/secrets.yaml
-		mv "$flake/secrets.yaml" "$secrets"
-		if git rev-parse --is-inside-work-tree >/dev/null; then
-			git add --intent-to-add --force "$secrets"
-		fi
-	fi
-	if [[ -z $ignore_nonexist && -z $secrets ]]; then
-		echo >&2 "No secrets file exist, edit to create one"
-		return 1
-	fi
-	echo "$secrets"
-}
-
-make_flake() {
-	local flake=$1
-	shift
-
-	if [[ ! -e $flake/Makefile ]] && [[ ! -e $flake/private/Makefile ]]; then
-		return
-	fi
-
-	{
-		local targets
-		read -r targets
-		local makefile
-		makefile=$(cat)
-	} < <(
-		eval_nixverse "$flake" "$@" <<EOF
-let
-  toTargets = map (name: "nodes/\${name}");
-  allNodeNames = lib.attrNames (
-    lib.concatMapAttrs (
-      entityName: entity:
-      {
-        node = { \${entityName} = true; };
-        group = lib.mapAttrs (nodeName: node: true) entity.nodes;
-      }.\${entity.type}
-    ) entities
-  );
-  makefile = [
-    ".PHONY: \${toString (toTargets allNodeNames)}"
-  ] ++ lib'.concatMapAttrsToList (
-    entityName: entity:
-    {
-      node = [
-        "node_\${entityName}_os := \${entity.os}"
-        "node_\${entityName}_channel := \${entity.channel}"
-      ];
-      group = [
-        "\${entityName}_node_names := \${toString (lib.attrNames entity.nodes)}"
-      ];
-    }.\${entity.type}
-  ) entities;
-in
-lib.concatLines ([ (toString (toTargets nodeNames)) ] ++ makefile)
-EOF
-	)
-
-	local nproc
-	nproc=$(nproc)
-
-	# shellcheck disable=SC2086
-	nix run "$flake#make" -- -j $((nproc + 1)) -C "$flake" -f <(
-		cat <<EOF
-$makefile
--include Makefile
--include private/Makefile
-EOF
-	) $targets
-}
-
-eval_flake() {
-	local flake=$1
-	shift
-
-	local expr
-	expr=$(
-		cat <<EOF
-flake:
-  assert if flake ? nixverse then
-    true
-  else
-    throw "Not inside a flake with nixverse loaded";
-  $(cat)
-EOF
-	)
-
-	nix eval \
-		--no-warn-dirty \
-		--apply "$expr" \
-		--show-trace \
-		--raw \
-		"$flake?submodules=1#."
-}
-
-eval_nixverse() {
-	local flake=$1
-	shift
-
-	local node_names=''
-	if [[ $# != 0 ]]; then
-		node_names=$(
-			cat <<EOF
-entityNames = lib.split " " "$*";
-nodeNames = lib.attrNames (
-  lib'.concatMapListToAttrs (
-    entityName:
-    let
-      entity = entities.\${entityName};
-    in
-    assert lib.assertMsg (lib.hasAttr entityName entities) "Unknown node \${entityName}";
-    {
-      node = { \${entityName} = true; };
-      group = lib.mapAttrs (nodeName: node: true) entity.nodes;
-    }.\${entity.type}
-  ) entityNames
-);
-EOF
-		)
-	fi
-
-	eval_flake "$flake" <<EOF
-let
-  inherit (flake.nixverse) lib lib' entities;
-$node_names
-in
-$(cat)
-EOF
-}
-
-eval_secrets() {
-	local flake=$1
-	local unencrypted_secrets_file=$2
-
-	eval_flake "$flake" <<EOF
-let
-  secrets =
-    let
-      inherit (flake.nixverse) lib lib' entities nodes inputs;
-      raw = lib'.call ($(<"$unencrypted_secrets_file")) {
-        lib = inputs.nixpkgs-unstable.lib;
-        lib' = flake.lib;
-        inherit secrets inputs nodes;
-      };
-      evaled = lib.evalModules {
-        modules = [
-          ($(<@out@/lib/nixverse/secrets/module.nix))
-          { config = raw; }
-        ];
-      };
-      nodeNameAttrs = lib.concatMapAttrs (
-        entityName: _:
-        let
-          entity = entities.\${entityName};
-        in
-        {
-          node = {
-            \${entityName} = true;
-          };
-          group = lib.mapAttrs (nodeName: node: true) entity.nodes;
-        }.\${entity.type}
-      ) evaled.config.nodes;
-      nodesSecrets = lib.mapAttrs (
-        nodeName: _:
-        let
-          node = entities.\${nodeName};
-        in
-        node.recursiveFoldParentNames (
-          acc: parentNames: _:
-          lib.recursiveUpdate (
-            builtins.foldl' (
-              acc: parentName:
-              lib.recursiveUpdate acc evaled.config.nodes.\${parentName} or {}
-            ) {} parentNames
-          ) acc
-        ) evaled.config.nodes.\${nodeName} or {}
-      ) nodeNameAttrs;
-    in
-    evaled.config // {
-      nodes = evaled.config.nodes // nodesSecrets;
-    };
-in
-$(cat)
-EOF
-}
-
-make() {
-	command make \
-		--no-builtin-rules \
-		--no-builtin-variables \
-		--warn-undefined-variables \
-		"$@"
-}
-
-nix() {
-	command nix --extra-experimental-features 'nix-command flakes' "$@"
-}
-
-cmd() {
-	local cmd=cmd
-	if [[ ${1-} = help ]]; then
-		cmd+=_help
-		shift
-	fi
-	case ${1-} in
-	'')
-		case ${2-} in
-		'')
-			if [[ $cmd = cmd_help ]]; then
-				cmd_help ''
-				return
-			else
-				cmd_help '' >&2
-				return 1
-			fi
-			;;
-		help)
-			if [[ $cmd != cmd_help ]]; then
-				shift 2
-				cmd help '' "$@"
-				return
-			fi
-			;;
-		*)
-			shift
-			local args
-			args=$(getopt -n nixverse -o '+h' --long 'help' -- "$@")
-			eval set -- "$args"
-			unset args
-
-			while true; do
-				case $1 in
-				-h | --help)
-					if [[ $cmd = cmd_help ]]; then
-						cmd help '' help
-					else
-						cmd_help ''
-					fi
-					return
-					;;
-				--)
-					shift
-					break
-					;;
-				*)
-					echo >&2 "Unhandled flag $1"
-					return 1
-					;;
-				esac
-			done
-			set -- '' "$@"
-			;;
-		esac
-		;;
-	*)
-		case ${2-} in
-		'')
-			cmd help '' "$1" >&2
-			return 1
-			;;
-		*)
-			local first=$1
-			shift
-
-			local args
-			args=$(getopt -n nixverse -o '+h' --long 'help' -- "$@")
-			eval set -- "$args"
-			unset args
-
-			while true; do
-				case $1 in
-				-h | --help)
-					cmd help '' "$first"
-					return
-					;;
-				--)
-					shift
-					break
-					;;
-				*)
-					echo >&2 "Unhandled flag $1"
-					return 1
-					;;
-				esac
-			done
-			set -- "$first" "$@"
-			unset first
-			;;
-		esac
-		;;
-	esac
-	cmd+=${1:+_$1}_$2
-	if [[ $(type -t "$cmd") = function ]]; then
-		shift 2
-		set -- "$cmd" "$@"
-		unset cmd
-		"$@"
-	else
-		if [[ $cmd = cmd_help_* ]]; then
-			cat >&2 <<-EOF
-				Unknown help topic $2
-				Run "nixverse help${1:+ $1}".
-			EOF
-		else
-			cat >&2 <<-EOF
-				Unknown command $2
-				Use "nixverse help${1:+ $1}" to find out usage.
-			EOF
-		fi
-		return 1
-	fi
-}
+# shellcheck source=library/utils.sh
+. @out@/lib/nixverse/utils.sh
 
 cmd '' "$@"

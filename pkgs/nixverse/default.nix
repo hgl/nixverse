@@ -5,12 +5,14 @@
   bash,
   coreutils,
   git,
-  util-linux, # for getopt
+  util-linux, # for getopt and uuidgen
+  findutils,
   gnumake,
   openssh,
   sops,
   ssh-to-age,
-  yq,
+  jq,
+  rsync,
   nixos-anywhere,
   nixos-rebuild-ng,
   darwin-rebuild,
@@ -29,11 +31,11 @@ runCommand "nixverse"
     meta.mainProgram = "nixverse";
   }
   ''
-    mkdir -p $out/{bin,lib/nixverse/secrets}
-    cp ${./secrets/Makefile} $out/lib/nixverse/secrets/Makefile
-    cp ${./secrets/module.nix} $out/lib/nixverse/secrets/module.nix
-    cp ${./secrets/template.nix} $out/lib/nixverse/secrets/template.nix
+    mkdir -p $out/{bin,lib}
+    cp -r ${./library} $out/lib/nixverse
 
+    substituteInPlace $out/lib/nixverse/Makefile \
+      --subst-var-by out $out
     substitute ${./nixverse.sh} $out/bin/nixverse \
       --subst-var-by shell ${lib.getExe bash} \
       --subst-var-by out $out \
@@ -44,11 +46,13 @@ runCommand "nixverse"
           coreutils
           git
           util-linux
+          findutils
           gnumake
           openssh
           sops
           ssh-to-age
-          yq
+          jq
+          rsync
           nixos-anywhere
           nixos-rebuild-ng
           parallel-run

@@ -10,10 +10,10 @@ let
     inherit pkgs' lib';
     nixverse = self.packages.${pkgs.stdenv.hostPlatform.system}.nixverse;
   };
-  pkgs' = lib.mapAttrs (name: paths: callPackage (lib.last paths) { }) (
+  pkgs' = lib.mapAttrs (name: paths: callPackage (lib.head paths) { }) (
     lib'.allImportPathsInDirs [
-      "${userFlakePath}/pkgs"
       "${userFlakePath}/private/pkgs"
+      "${userFlakePath}/pkgs"
     ]
   );
 in

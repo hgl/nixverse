@@ -15,7 +15,7 @@ let
       userFlakePath
       ;
   };
-  userPkgs = import ./userPkgs.nix {
+  getUserPkgs = import ./getUserPkgs.nix {
     inherit
       lib
       lib'
@@ -30,7 +30,7 @@ let
       userFlakePath
       ;
   };
-  nodes = lib.mapAttrs (
+  userEntities = lib.mapAttrs (
     entityName: entity:
     {
       node = lib.removeAttrs entity [
@@ -49,24 +49,32 @@ let
   entities = lib.mapAttrs (
     entityName: rawEntity:
     {
-      node = import ./loadNode.nix {
+      node = import ./node.nix {
         inherit
           lib
           lib'
           userInputs
           userFlakePath
           userLib
-          userPkgs
           userModules
-          nodes
           rawEntity
+          getUserPkgs
           ;
+        userEntities = lib.concatMapAttrs (
+          name: entity:
+          {
+            ${name} = entity;
+          }
+          // lib.optionalAttrs (name == entityName) {
+            current = entity;
+          }
+        ) userEntities;
       };
-      group = import ./loadGroup.nix {
+      group = import ./group.nix {
         inherit
           lib
           lib'
-          nodes
+          userEntities
           rawEntity
           ;
       };
@@ -89,10 +97,10 @@ let
       userFlake
       userFlakePath
       userLib
-      userPkgs
+      getUserPkgs
       userModules
       entities
-      nodes
+      userEntities
       ;
   };
 in

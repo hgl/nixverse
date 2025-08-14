@@ -4,23 +4,14 @@
   userInputs,
   userFlakePath,
   userLib,
-  userPkgs,
+  getUserPkgs,
   userModules,
-  nodes,
+  userEntities,
   rawEntity,
 }:
 let
   nodeName = rawEntity.name;
   inherit (metaConfig) os channel;
-  nodesWithCurrent = lib.concatMapAttrs (
-    entityName: entity:
-    {
-      ${entityName} = entity;
-    }
-    // lib.optionalAttrs (entityName == nodeName) {
-      current = entity;
-    }
-  ) nodes;
   metaConfig =
     let
       inherit
@@ -29,7 +20,7 @@ let
             lib' = userLib;
             lib = userInputs.nixpkgs-unstable.lib;
             inputs = userInputs;
-            nodes = nodesWithCurrent;
+            nodes = userEntities;
           };
           modules = [
             ./modules/nixos/assertions.nix
@@ -45,12 +36,9 @@ let
                 }";
               }
               // lib'.call def.value {
-                inherit (args)
-                  lib
-                  lib'
-                  nodes
-                  ;
+                inherit (args) lib lib';
                 inputs = userInputs;
+                nodes = userEntities;
               }
             )
           ) rawEntity.defs;
@@ -111,16 +99,17 @@ let
     }:
     {
       _module.args = {
-        pkgs' = userPkgs pkgs;
+        pkgs' = getUserPkgs pkgs;
       };
       networking.hostName = lib.mkDefault nodes.current.name;
+      environment.systemPackages = [ pkgs.rsync ]; # for fs sync support
     };
   configuration = mkConfiguration {
     specialArgs = {
       lib' = userLib;
       inputs' = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) inputs';
       modules' = userModules.${os};
-      nodes = nodesWithCurrent;
+      nodes = userEntities;
     }
     // lib.optionalAttrs (lib.pathExists "${userFlakePath}/private") {
       privatePath = "${userFlakePath}/private";
@@ -172,7 +161,7 @@ let
                 }
               ) inputs';
               modules' = userModules.home;
-              nodes = nodesWithCurrent;
+              nodes = userEntities;
             };
             users = lib.mapAttrs (userName: paths: {
               imports = paths;
@@ -195,8 +184,8 @@ let
   sshHostKeyPath =
     let
       paths =
-        lib'.optionalPath "${rawEntity.path}/ssh_host_ed25519_key"
-        ++ lib'.optionalPath "${rawEntity.privatePath}/ssh_host_ed25519_key";
+        lib'.optionalPath "${rawEntity.path}/secrets/fs/etc/ssh/ssh_host_ed25519_key"
+        ++ lib'.optionalPath "${rawEntity.privatePath}/secrets/fs/etc/ssh/ssh_host_ed25519_key";
       n = lib.length paths;
       path = lib.head paths;
     in
@@ -209,8 +198,8 @@ let
   secretsPaths =
     let
       paths =
-        lib'.optionalPath "${rawEntity.path}/secrets.yaml"
-        ++ lib'.optionalPath "${rawEntity.privatePath}/secrets.yaml";
+        lib'.optionalPath "${rawEntity.path}/secrets/default.yaml"
+        ++ lib'.optionalPath "${rawEntity.privatePath}/secrets/default.yaml";
       n = lib.length paths;
       path = lib.head paths;
     in
@@ -256,8 +245,8 @@ lib.removeAttrs rawEntity [
 ]
 // metaConfig
 // {
-  parents = lib.genAttrs rawEntity.parentNames (name: nodes.${name});
-  groups = lib.genAttrs rawEntity.groupNames (name: nodes.${name});
+  parents = lib.genAttrs rawEntity.parentNames (name: userEntities.${name});
+  groups = lib.genAttrs rawEntity.groupNames (name: userEntities.${name});
   inherit configuration diskConfigPaths sshHostKeyPath;
   inherit (configuration) config;
   dir = lib.removePrefix "${userFlakePath}/" rawEntity.path;
