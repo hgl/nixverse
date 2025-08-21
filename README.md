@@ -318,12 +318,12 @@ This will open a Nix file with your text editor. Change the content to:
 
 Save and exit the editor and Nixverse will:
 
-1. Generate a SSH host key for each node with secrets in its directory. In this case, the nodes are `router1` and `router2`.
-1. Encrypt Each node's secrets with the SSH host key, saved to `secrets.yaml` in the node's directory.
-1. Automatically import the `sops-nix` module and use `secrets.yaml` for `sops.defaultSopsFile`.
+1. For each node eventually contains any secret, generate a SSH host key in its directory. In this case it's `router1` and `router2`.
+1. Encrypt each node's secrets with the SSH host key, saved to `secrets.yaml` in the node's directory.
+1. Import the `sops-nix` module and set `sops.defaultSopsFile = secrets.yaml`.
 1. Encrypt the Nix file with the master age key, saved to `secrets.yaml` in the flake root.
 
-At runtime, `sops-nix` will write the password to a file, which be can be loaded into `pppd`:
+At runtime, `sops-nix` will write the password to a file, which will be be loaded into `pppd`:
 
 ```diff
 # nodes/routers/common/configuration.nix
@@ -483,6 +483,8 @@ And of course, don’t forget to add the `disko` flake input. (If you're wonderi
 }
 ```
 
+We are finally done! To install NixOS on each machine, they need to first boot the official NixOS installer, i.e., the iso file. Once finished, we need to ssh into them as a root. To do that, one manual step is required. On each machine, either set a root password with `sudo passwd` or download your public ssh key and append it to `/root/.ssh/authorized_keys`.
+
 As a final step, we need to tell Nixverse the address of each machine to install:
 
 ```diff
@@ -490,10 +492,10 @@ As a final step, we need to tell Nixverse the address of each machine to install
 {
   common = ...
   server1 = {
-+   deploy.targetHost = "1.1.1.1";
++   install.targetHost = "root@1.1.1.1";
   };
   server2 = {
-+   deploy.targetHost = "2.2.2.2";
++   install.targetHost = "root@2.2.2.2";
   };
 }
 ```
@@ -503,23 +505,23 @@ As a final step, we need to tell Nixverse the address of each machine to install
 {
   common = ...
   router1 = {
-+   deploy.targetHost = "3.3.3.3";
++   install.targetHost = "root@3.3.3.3";
   };
   router2 = {
-+   deploy.targetHost = "4.4.4.4";
++   install.targetHost = "root@4.4.4.4";
   };
 }
 ```
 
-Notice we set `deploy.targetHost`. There is also `install.targetHost`, which defaults to `deploy.targetHost` if not explicitly set, to specify the address for installing specifically. This allows you to specify a different address for installation if needed. If the machine uses the same address for both installation and deployment, it’s best to set `deploy.targetHost` only — this way, you can run `node deploy` later without modifying any code.
+Notice we use `install.targetHost` this time. That address is for installing specifically, and `root` is also explicit specified.
 
-Now we’re ready to install the configured NixOS to all machines in parallel:
+Now we’re ready to install the configured NixOS to all machines in parallel.
 
 ```
 $ nix run . node install servers routers
 ```
 
-This command will partition each disk, transfer all required packages, and activate the full configuration — all in one shot.
+This command will partition each disk, transfer all required packages and the generated ssh host keys, and activate the full configuration — all in one shot.
 
 And that’s it. Four freshly installed machines, fully configured, secrets encrypted, users provisioned, ready to rock and roll.
 
