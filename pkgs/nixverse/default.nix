@@ -58,9 +58,7 @@ runCommand "nixverse"
           parallel-run
           (builtins.placeholder "out")
         ]
-        # TODO: re-enable this after it no longer defaults to older version of nix
-        # https://github.com/nix-darwin/nix-darwin/pull/1549
-        # ++ lib.optional (darwin-rebuild != null) darwin-rebuild
+        ++ lib.optional (darwin-rebuild != null) darwin-rebuild
         )
       }
     chmod a=rx $out/bin/nixverse
