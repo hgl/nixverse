@@ -1,7 +1,6 @@
 {
   lib,
   runCommand,
-  nix,
   bash,
   coreutils,
   git,
@@ -40,25 +39,25 @@ runCommand "nixverse"
       --subst-var-by shell ${lib.getExe bash} \
       --subst-var-by out $out \
       --subst-var-by path ${
-        lib.makeBinPath ([
-          nix
-          bash
-          coreutils
-          git
-          util-linux
-          findutils
-          gnumake
-          openssh
-          sops
-          ssh-to-age
-          jq
-          rsync
-          nixos-anywhere
-          nixos-rebuild-ng
-          parallel-run
-          (builtins.placeholder "out")
-        ]
-        ++ lib.optional (darwin-rebuild != null) darwin-rebuild
+        lib.makeBinPath (
+          [
+            bash
+            coreutils
+            git
+            util-linux
+            findutils
+            gnumake
+            openssh
+            sops
+            ssh-to-age
+            jq
+            rsync
+            nixos-anywhere
+            nixos-rebuild-ng
+            parallel-run
+            (builtins.placeholder "out")
+          ]
+          ++ lib.optional (darwin-rebuild != null) darwin-rebuild
         )
       }
     chmod a=rx $out/bin/nixverse
