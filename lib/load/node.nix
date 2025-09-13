@@ -152,7 +152,7 @@ let
             useGlobalPkgs = lib.mkDefault true;
             useUserPackages = lib.mkDefault true;
             extraSpecialArgs = {
-              inherit lib';
+              lib' = userLib;
               inputs' = lib.mapAttrs (
                 name: input':
                 lib.removeAttrs input' [ "homeModules" ]
