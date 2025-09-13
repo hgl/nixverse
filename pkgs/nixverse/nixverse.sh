@@ -113,7 +113,7 @@ let
     getSecretsMakefile
     getFSEntries
     userMakefile
-    getNodeBuildCommands
+    getNodeInstallCommands
     ;
   entityNames = lib.splitString " " "$*";
   nodeNames = getNodeNames entityNames;

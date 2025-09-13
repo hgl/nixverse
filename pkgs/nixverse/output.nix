@@ -107,7 +107,7 @@
         node = entities.${nodeName};
         buildOn = "--build-on ${if node.install.buildOnRemote then "remote" else "local"}";
         useSubstitutes = lib.optionalString (!node.install.useSubstitutes) "--no-substitute-on-destination";
-        extraFiles = "--extra-files '${userFlakeSourcePath}/build/nodes/${nodeName}/fs'";
+        fsDir = "${userFlakeSourcePath}/build/nodes/${nodeName}/fs";
       in
       assert lib.assertMsg (
         node.os != "darwin"
@@ -119,10 +119,14 @@
       {
         name = nodeName;
         command = ''
+          if [[ -d '${fsDir}' ]]; then
+            set -- --extra-files '${fsDir}'
+          fi
           nixos-anywhere --no-disko-deps \
-            --flake '${userFlakePath}#${nodeName}' \
-            --generate-hardware-config nixos-generate-config '${userFlakePath}/${node.dir}/hardware-configuration.nix' \
-            ${buildOn} ${useSubstitutes} ${extraFiles} ${lib.escapeShellArg node.install.targetHost}
+            --flake '${userFlakeSourcePath}#${nodeName}' \
+            --generate-hardware-config nixos-generate-config '${userFlakeSourcePath}/${node.dir}/hardware-configuration.nix' \
+            ${buildOn} ${useSubstitutes} "$@" \
+            ${lib.escapeShellArg node.install.targetHost}
         '';
       }
     ) nodeNames;
