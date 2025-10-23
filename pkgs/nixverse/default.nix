@@ -1,5 +1,6 @@
 {
   lib,
+  nix,
   runCommand,
   bash,
   coreutils,
@@ -45,6 +46,7 @@ runCommand "nixverse"
             coreutils
             git
             util-linux
+            nix
             findutils
             gnumake
             openssh
