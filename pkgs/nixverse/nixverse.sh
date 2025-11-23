@@ -548,6 +548,8 @@ Manage secrets
 
 Commands:
   edit         edit the secrets
+  encrypt      encrypt a file using either the master or node age pubkey
+  decrypt      decrypt a file using either the master or node age pubkey
   eval         evaluate a Nix expression against the secrets
 
 Use "nixverse secrets <command> --help" for more information about a command.
@@ -724,7 +726,7 @@ cmd_secrets_encrypt() {
 			shift 2
 			;;
 		-h | --help)
-			cmd help eval
+			cmd help secrets encrypt
 			return
 			;;
 		--)
@@ -863,7 +865,7 @@ cmd_secrets_decrypt() {
 			shift 2
 			;;
 		-h | --help)
-			cmd help eval
+			cmd help secrets decrypt
 			return
 			;;
 		--)
