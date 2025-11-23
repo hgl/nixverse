@@ -151,7 +151,7 @@ rsync_fs() {
 		return
 	fi
 
-	rsync --ignore-existing --recursive --links --perms --times \
+	rsync --recursive --links --perms --times \
 		"$dir/" "$addr:/"
 }
 
