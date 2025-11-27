@@ -288,7 +288,7 @@ find_secrets_yaml() {
 			return 1
 		fi
 		secrets_yaml=$flake/private/secrets.yaml
-	elif [[ -n $secrets && -d $flake/private ]]; then
+	elif [[ -n $secrets_yaml && -d $flake/private ]]; then
 		secrets_yaml=$flake/private/secrets.yaml
 		mv "$flake/secrets.yaml" "$secrets_yaml"
 		if git rev-parse --is-inside-work-tree >/dev/null; then
