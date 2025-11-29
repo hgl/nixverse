@@ -101,10 +101,6 @@ define DefineNodeSecrets
 		fi
 	fi
 
-  nodes/$(1): build/nodes/$(1)/fs/etc/ssh/ssh_host_ed25519_key.pub
-  build/nodes/$(1)/fs/etc/ssh/ssh_host_ed25519_key.pub: $(private_dir)$(2)/fs/etc/ssh/ssh_host_ed25519_key.pub
-	cp $$< $$@
-
   build/nodes/$(1)/secrets.json: | build/nodes/$(1)
 
   $(private_dir)$(2)/secrets \
