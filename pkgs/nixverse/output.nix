@@ -174,7 +174,7 @@
         common = "--flake '${userFlakePath}#${nodeName}' --show-trace";
         rebuild =
           {
-            nixos = "${sshOpts} nixos-rebuild-ng switch ${targetHost} ${buildHost} ${useSubstitutes} ${useRemoteSudo} ${common}";
+            nixos = "${sshOpts} nixos-rebuild switch ${targetHost} ${buildHost} ${useSubstitutes} ${useRemoteSudo} ${common}";
             darwin = "sudo darwin-rebuild switch ${common}";
           }
           .${node.os};
