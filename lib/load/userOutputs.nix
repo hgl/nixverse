@@ -56,7 +56,6 @@ let
         _module.args = {
           lib = userInputs.nixpkgs-unstable.lib;
           lib' = userLib;
-          getPkgs' = getUserPkgs;
         };
         perSystem =
           { config, system, ... }:
