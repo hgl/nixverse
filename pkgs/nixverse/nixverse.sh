@@ -53,16 +53,18 @@ Install one or more nodes.
 
 Options:
   -p, --parallel <num>      number of nodes to install in parallel (default: 10)
+  --lustrate                install using lustrate
   -h, --help                show this help
 EOF
 }
 cmd_node_install() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,lustrate' -- "$@")
 	eval set -- "$args"
 	unset args
 
 	local parallel=$default_parallel
+	local lustrate=false
 	while true; do
 		case $1 in
 		-p | --parallel)
@@ -72,6 +74,10 @@ cmd_node_install() {
 				return 1
 			fi
 			shift 2
+			;;
+		--lustrate)
+			lustrate=true
+			shift
 			;;
 		-h | --help)
 			cmd help node install
@@ -126,7 +132,11 @@ in
   fsEntries = getFSEntries nodeNames;
   "user.mk" = userMakefile;
   "cmds.json" = builtins.toJSON (
-    getNodeInstallCommands nodeNames "$flake"
+    getNodeInstallCommands {
+      inherit nodeNames;
+      userFlakeSourcePath = "$flake";
+      lustrate = $lustrate;
+    }
   );
 }
 EOF
@@ -282,12 +292,13 @@ EOF
 }
 cmd_node_deploy() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,no-activate,no-boot' -- "$@")
 	eval set -- "$args"
 	unset args
 
 	local parallel=$default_parallel
 	local activate=true
+	local boot=true
 	while true; do
 		case $1 in
 		-p | --parallel)
@@ -300,6 +311,10 @@ cmd_node_deploy() {
 			;;
 		--no-activate)
 			activate=false
+			shift
+			;;
+		--no-boot)
+			boot=false
 			shift
 			;;
 		-h | --help)
@@ -360,6 +375,7 @@ in
       userFlakeSourcePath = "$flake";
       nixversePath = "@out@";
       activate = $activate;
+      boot = $boot;
     }
   );
 }
@@ -387,6 +403,73 @@ include $dir/user.mk
 EOF
 		) "$@"
 	fi
+
+	parallel-run "$parallel" "$dir/cmds.json"
+}
+
+cmd_node_genhw() {
+	local args
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
+	eval set -- "$args"
+	unset args
+
+	local parallel=$default_parallel
+	while true; do
+		case $1 in
+		-p | --parallel)
+			parallel=$2
+			if [[ $parallel = 0 || ! $parallel =~ ^[0-9]+$ ]]; then
+				echo >&2 "$1 must specify a positive number"
+				return 1
+			fi
+			shift 2
+			;;
+		-h | --help)
+			cmd help node rsync
+			return
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			echo >&2 "Unhandled flag $1"
+			return 1
+			;;
+		esac
+	done
+
+	if [[ $# = 0 ]]; then
+		cmd help node rsync >&2
+		return 1
+	fi
+
+	local flake
+	flake=$(find_flake)
+
+	local dir
+	dir=$(
+		eval_flake --write "$flake" <<EOF
+let
+  inherit (flake.nixverse)
+    lib
+    getNodeNames
+    getNodeGenhwCommands
+    ;
+  entityNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames entityNames;
+in
+{
+  "cmds.json" = builtins.toJSON (
+    getNodeGenhwCommands {
+      inherit nodeNames;
+      userFlakeSourcePath = "$flake";
+      nixversePath = "@out@";
+    }
+  );
+}
+EOF
+	)
 
 	parallel-run "$parallel" "$dir/cmds.json"
 }
@@ -1050,7 +1133,7 @@ Show help for the command.
 EOF
 }
 
-# shellcheck source=library/utils.sh
+# shellcheck source=share/utils.sh
 . @out@/share/nixverse/utils.sh
 
 cmd '' "$@"

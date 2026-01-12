@@ -100,34 +100,103 @@
     ) entities
   );
   getNodeInstallCommands =
-    nodeNames: userFlakeSourcePath:
+    {
+      nodeNames,
+      userFlakeSourcePath,
+      lustrate,
+    }:
     map (
       nodeName:
       let
         node = entities.${nodeName};
-        buildOn = "--build-on ${if node.install.buildOnRemote then "remote" else "local"}";
-        useSubstitutes = lib.optionalString (!node.install.useSubstitutes) "--no-substitute-on-destination";
-        fsDir = "${userFlakeSourcePath}/build/nodes/${nodeName}/fs";
+        targetHostArg = lib.escapeShellArg node.install.targetHost;
+        sshOpts = "${lib.escapeShellArg (map (opt: "-o ${lib.escapeShellArg opt}") node.deploy.sshOpts)}";
+        hwFileArg = lib.escapeShellArg "${userFlakeSourcePath}/${node.dir}/hardware-configuration.nix";
+        flakeArg = "--flake ${lib.escapeShellArg "${userFlakeSourcePath}#${nodeName}"}";
+        fsDirArg = lib.escapeShellArg "${userFlakeSourcePath}/build/nodes/${nodeName}/fs";
       in
       assert lib.assertMsg (
         node.os != "darwin"
-      ) "Deploy to the darwin node ${nodeName} directlt to install nix-darwin";
+      ) "Deploy to the darwin node ${nodeName} directly to install nix-darwin";
       assert lib.assertMsg (
         node.install.targetHost != null
       ) "Missing meta configuration install.targetHost for node ${nodeName}";
-      assert lib.assertMsg (node.diskConfigPaths != [ ]) "Missing disk-config.nix for node ${nodeName}";
       {
         name = nodeName;
-        command = ''
-          if [[ -d '${fsDir}' ]]; then
-            set -- --extra-files '${fsDir}'
-          fi
-          nixos-anywhere --no-disko-deps \
-            --flake '${userFlakeSourcePath}#${nodeName}' \
-            --generate-hardware-config nixos-generate-config '${userFlakeSourcePath}/${node.dir}/hardware-configuration.nix' \
-            ${buildOn} ${useSubstitutes} "$@" \
-            ${lib.escapeShellArg node.install.targetHost}
-        '';
+        command =
+          if lustrate then
+            ''
+              set -euo pipefail
+
+              cmd=$(cat <<'EOF'
+              set -euo pipefail
+
+              mem_swap_less_than_1g() {
+                awk '
+                  BEGIN { size = 0 }
+                  /^MemTotal:/ { size += $2 }
+                  /^SwapTotal:/ { size += $2 }
+                  END { exit (size < 1024 * 1024 ? 0 : 1) }
+                ' /proc/meminfo
+              }
+              if mem_swap_less_than_1g; then
+                dd if=/dev/zero of=/swapfile bs=1M count=1024
+                chmod 600 /swapfile
+                mkswap /swapfile
+                swapon /swapfile
+              fi
+              tar -C / -xf- --no-same-owner || [[ $? = 2 ]]
+              if ! command -v nix &>/dev/null; then
+                install_url='https://artifacts.nixos.org/experimental-installer'
+                curl --fail --silent --show-error --location --proto =https \
+                  --tlsv1.2 --location "$install_url" | sh -s -- install --no-confirm
+                . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+              fi
+
+              : >/etc/NIXOS
+              cat <<EOF2 >/etc/NIXOS_LUSTRATE
+              /etc/ssh/ssh_host_ed25519_key
+              /etc/ssh/ssh_host_ed25519_key.pub
+              EOF2
+
+              nix profile add nixpkgs#nixos-install-tools
+              if [[ -d /boot/efi ]]; then
+                umount /boot/efi
+              fi
+              find /boot -mindepth 1 -delete
+              EOF
+              )
+              if [[ -d ${fsDirArg} ]]; then
+                tar -C ${fsDirArg} -cpf- .
+              else
+                :
+              fi | ssh ${targetHostArg} "$cmd"
+
+              if [[ ! -e ${hwFileArg} ]]; then
+                ssh ${targetHostArg} nixos-generate-config \
+                  --show-hardware-config >${hwFileArg}
+                git add --intent-to-add --force ${hwFileArg}
+              fi
+
+              NIX_SSHOPTS=${sshOpts} nixos-rebuild boot \
+                --install-bootloader --target-host ${targetHostArg} ${flakeArg} \
+                ${lib.optionalString node.install.useSubstitutes "--use-substitutes"} \
+                ${lib.optionalString node.install.useRemoteSudo "--use-remote-sudo"} \
+                "$@"
+              ssh ${targetHostArg} reboot
+            ''
+          else
+            ''
+              if [[ -d ${fsDirArg} ]]; then
+                set -- --extra-files ${fsDirArg}
+              fi
+              nixos-anywhere --no-disko-deps \
+                ${flakeArg} ${sshOpts} \
+                --build-on ${if node.install.buildOnRemote then "remote" else "local"} \
+                ${lib.optionalString (!node.install.useSubstitutes) "--no-substitute-on-destination"} \
+                --generate-hardware-config nixos-generate-config ${hwFileArg} \
+                "$@" ${targetHostArg}
+            '';
       }
     ) nodeNames;
   getNodeBuildCommands =
@@ -145,11 +214,17 @@
       in
       {
         name = nodeName;
-        command = "nix build --no-link --show-trace '${userFlakePath}#${attrPath}'";
+        command = "nix build --no-link --show-trace ${lib.escapeShellArg "${userFlakePath}#${attrPath}"}";
       }
     ) nodeNames;
   getNodeDeployCommands =
-    nodeNames: userFlakeSourcePath: nixversePath:
+    {
+      nodeNames,
+      userFlakeSourcePath,
+      nixversePath,
+      activate,
+      boot,
+    }:
     let
       localNodeNames = lib.filter (nodeName: entities.${nodeName}.deploy.targetHost == null) nodeNames;
     in
@@ -174,8 +249,10 @@
         common = "--flake '${userFlakePath}#${nodeName}' --show-trace";
         rebuild =
           {
-            nixos = "${sshOpts} nixos-rebuild switch ${targetHost} ${buildHost} ${useSubstitutes} ${useRemoteSudo} ${common}";
-            darwin = "sudo darwin-rebuild switch ${common}";
+            nixos = "${sshOpts} nixos-rebuild ${
+              if activate then if boot then "switch" else "test" else "build"
+            } ${targetHost} ${buildHost} ${useSubstitutes} ${useRemoteSudo} ${common}";
+            darwin = "sudo darwin-rebuild ${if activate then "switch" else "build"} ${common}";
           }
           .${node.os};
       in
@@ -184,10 +261,32 @@
         command = lib.concatLines (
           [ rebuild ]
           ++ lib.optionals (node.deploy.targetHost != null) [
-            ". ${nixversePath}/lib/nixverse/utils.sh"
-            "rsync_fs '${node.deploy.targetHost}' '${userFlakeSourcePath}/build/nodes/${nodeName}/fs'"
+            ". ${lib.escapeShellArg "${nixversePath}/share/nixverse/utils.sh"}"
+            "rsync_fs ${lib.escapeShellArg node.deploy.targetHost} ${lib.escapeShellArg "${userFlakeSourcePath}/build/nodes/${nodeName}/fs"}"
           ]
         );
+      }
+    ) nodeNames;
+  getNodeGenhwCommands =
+    {
+      nodeNames,
+      userFlakeSourcePath,
+      nixversePath,
+    }:
+    map (
+      nodeName:
+      let
+        node = entities.${nodeName};
+      in
+      assert lib.assertMsg (
+        node.deploy.targetHost != null
+      ) "Missing meta configuration deploy.targetHost for node  ${nodeName}";
+      {
+        name = nodeName;
+        command = ''
+          ssh ${lib.escapeShellArg node.deploy.targetHost} nixos-generate-config --show-hardware-config \
+            >${lib.escapeShellArg "${userFlakeSourcePath}/${node.dir}/hardware-configuration.nix"}
+        '';
       }
     ) nodeNames;
   getNodeRsyncCommands =
@@ -206,7 +305,7 @@
       lib.optional (node.deploy.targetHost != null) {
         name = nodeName;
         command = lib.concatLines [
-          ". ${nixversePath}/lib/nixverse/utils.sh"
+          ". ${nixversePath}/share/nixverse/utils.sh"
           "rsync_fs '${node.deploy.targetHost}' '${userFlakeSourcePath}/build/nodes/${nodeName}/fs'"
         ];
       }
