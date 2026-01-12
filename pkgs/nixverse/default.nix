@@ -8,6 +8,7 @@
   util-linux, # for getopt and uuidgen
   findutils,
   gnumake,
+  gnutar,
   openssh,
   sops,
   ssh-to-age,
@@ -49,6 +50,7 @@ runCommand "nixverse"
             nix
             findutils
             gnumake
+            gnutar
             openssh
             sops
             ssh-to-age
