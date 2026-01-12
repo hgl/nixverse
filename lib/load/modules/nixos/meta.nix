@@ -55,6 +55,10 @@ in
             type = types.bool;
             default = config.deploy.useSubstitutes;
           };
+          useRemoteSudo = mkOption {
+            type = types.bool;
+            default = config.deploy.useRemoteSudo;
+          };
           sshOpts = mkOption {
             type = types.listOf types.nonEmptyStr;
             default = config.deploy.sshOpts;
