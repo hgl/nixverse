@@ -26,7 +26,7 @@ in
           };
           useSubstitutes = mkOption {
             type = types.bool;
-            default = false;
+            default = true;
           };
           useRemoteSudo = mkOption {
             type = types.bool;
