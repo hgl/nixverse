@@ -63,30 +63,20 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          packages = [
-            pkgs.nil
-            pkgs.nixfmt-rfc-style
-            pkgs.shfmt
-            pkgs.shellcheck
-            pkgs.nodePackages.bash-language-server
-            pkgs.nodePackages.yaml-language-server
-            nix-unit.packages.${system}.nix-unit
-            self.packages.${system}.nixverse
-          ];
         in
         {
-          default = derivation {
+          default = pkgs.mkShellNoCC {
             name = "shell";
-            inherit system packages;
-            builder = "${pkgs.bash}/bin/bash";
-            outputs = [ "out" ];
-            stdenv = pkgs.writeTextDir "setup" ''
-              set -e
-
-              for p in $packages; do
-                PATH=$p/bin:$PATH
-              done
-            '';
+            packages = [
+              pkgs.nil
+              pkgs.nixfmt-rfc-style
+              pkgs.shfmt
+              pkgs.shellcheck
+              pkgs.nodePackages.bash-language-server
+              pkgs.nodePackages.yaml-language-server
+              nix-unit.packages.${system}.nix-unit
+              self.packages.${system}.nixverse
+            ];
           };
         }
       );
