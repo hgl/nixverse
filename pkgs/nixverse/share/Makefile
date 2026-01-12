@@ -114,12 +114,12 @@ define DefineNodesSecrets
   # $(1): secrets node names
 
   $(1:%=build/nodes/%/secrets.json) &: $(private_dir)secrets.yaml
-	. @out@/lib/nixverse/utils.sh
+	. @out@/share/nixverse/utils.sh
 	build_node_secrets_json . "$$$$SOPS_CONFIG" $$< '$(1)'
 endef
 
 build/secrets.json: $(private_dir)secrets.yaml | build
-	. @out@/lib/nixverse/utils.sh
+	. @out@/share/nixverse/utils.sh
 	secrets_json . "$$SOPS_CONFIG" $< $@
 
 build:

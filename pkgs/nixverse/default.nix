@@ -31,10 +31,10 @@ runCommand "nixverse"
     meta.mainProgram = "nixverse";
   }
   ''
-    mkdir -p $out/{bin,lib}
-    cp -r ${./library} $out/lib/nixverse
+    mkdir -p $out/{bin,share}
+    cp -r ${./share} $out/share/nixverse
 
-    substituteInPlace $out/lib/nixverse/Makefile \
+    substituteInPlace $out/share/nixverse/Makefile \
       --subst-var-by out $out
     substitute ${./nixverse.sh} $out/bin/nixverse \
       --subst-var-by shell ${lib.getExe bash} \

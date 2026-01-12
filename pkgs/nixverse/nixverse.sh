@@ -139,7 +139,7 @@ EOF
 
 	set -- "${@/#/nodes/}"
 	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
-		-f @out@/lib/nixverse/Makefile \
+		-f @out@/share/nixverse/Makefile \
 		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
 		-f <(fs_makefile <"$dir/fsEntries") \
 		"$@"
@@ -251,7 +251,7 @@ EOF
 
 	set -- "${@/#/nodes/}"
 	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
-		-f @out@/lib/nixverse/Makefile \
+		-f @out@/share/nixverse/Makefile \
 		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
 		-f <(fs_makefile <"$dir/fsEntries") \
 		"$@"
@@ -287,6 +287,7 @@ cmd_node_deploy() {
 	unset args
 
 	local parallel=$default_parallel
+	local activate=true
 	while true; do
 		case $1 in
 		-p | --parallel)
@@ -296,6 +297,10 @@ cmd_node_deploy() {
 				return 1
 			fi
 			shift 2
+			;;
+		--no-activate)
+			activate=false
+			shift
 			;;
 		-h | --help)
 			cmd help node deploy
@@ -350,7 +355,12 @@ in
   fsEntries = getFSEntries nodeNames;
   "user.mk" = userMakefile;
   "cmds.json" = builtins.toJSON (
-    getNodeDeployCommands nodeNames "$flake" "@out@"
+    getNodeDeployCommands {
+      inherit nodeNames;
+      userFlakeSourcePath = "$flake";
+      nixversePath = "@out@";
+      activate = $activate;
+    }
   );
 }
 EOF
@@ -363,7 +373,7 @@ EOF
 
 	set -- "${@/#/nodes/}"
 	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
-		-f @out@/lib/nixverse/Makefile \
+		-f @out@/share/nixverse/Makefile \
 		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
 		-f <(fs_makefile <"$dir/fsEntries") \
 		"$@"
@@ -464,7 +474,7 @@ EOF
 
 	set -- "${@/#/nodes/}"
 	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
-		-f @out@/lib/nixverse/Makefile \
+		-f @out@/share/nixverse/Makefile \
 		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
 		-f <(fs_makefile <"$dir/fsEntries") \
 		"$@"
@@ -607,7 +617,7 @@ cmd_secrets_edit() {
 	pushd "$flake" >/dev/null
 	if [[ -z $secrets_yaml ]]; then
 		mkdir -p build
-		cp @out@/lib/nixverse/secrets-template.nix "$secrets_nix"
+		cp @out@/share/nixverse/secrets-template.nix "$secrets_nix"
 		chmod a=,u=rw "$secrets_nix"
 	else
 		decrypt_to_secrets_nix "$sops_config" "$secrets_yaml"
@@ -663,7 +673,7 @@ EOF
 	targets=$(<"$dir/targets")
 	# shellcheck disable=SC2086
 	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
-		-f @out@/lib/nixverse/Makefile \
+		-f @out@/share/nixverse/Makefile \
 		-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
 		$targets
 
@@ -790,7 +800,7 @@ EOF
 		nproc=$(nproc)
 
 		SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
-			-f @out@/lib/nixverse/Makefile \
+			-f @out@/share/nixverse/Makefile \
 			-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
 			"$pubkey"
 	fi
@@ -929,7 +939,7 @@ EOF
 		nproc=$(nproc)
 
 		SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" \
-			-f @out@/lib/nixverse/Makefile \
+			-f @out@/share/nixverse/Makefile \
 			-f "$dir/nodes.mk" -f "$dir/secrets.mk" \
 			"$key"
 	fi
@@ -1015,7 +1025,7 @@ cmd_secrets_eval() {
 	nproc=$(nproc)
 
 	SOPS_CONFIG=$sops_config make -j $((nproc + 1)) -C "$flake" --silent \
-		-f @out@/lib/nixverse/Makefile \
+		-f @out@/share/nixverse/Makefile \
 		build/secrets.json
 
 	eval_flake --impure . <<EOF
@@ -1041,6 +1051,6 @@ EOF
 }
 
 # shellcheck source=library/utils.sh
-. @out@/lib/nixverse/utils.sh
+. @out@/share/nixverse/utils.sh
 
 cmd '' "$@"
