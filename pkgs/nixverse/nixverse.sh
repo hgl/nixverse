@@ -287,19 +287,21 @@ Deploy one or more nodes.
 
 Options:
   -p, --parallel <num>      number of nodes to deploy in parallel (default: 10)
+  -n, --dry-run             use {nixos,darwin}-rebuild build
+  --ephemeral               use nixos-rebuild test
   --reboot                  deploy with nixos-rebuild boot, then reboot
   -h, --help                show this help
 EOF
 }
 cmd_node_deploy() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,no-activate,no-boot,reboot' -- "$@")
+	args=$(getopt -n nixverse -o 'hnp:' --long 'help,dry-run,parallel:,ephemeral,reboot' -- "$@")
 	eval set -- "$args"
 	unset args
 
 	local parallel=$default_parallel
-	local activate=true
-	local boot=true
+	local dryRun=false
+	local ephemeral=false
 	local reboot=false
 	while true; do
 		case $1 in
@@ -311,12 +313,12 @@ cmd_node_deploy() {
 			fi
 			shift 2
 			;;
-		--no-activate)
-			activate=false
+		-n | --dry-run)
+			dryRun=true
 			shift
 			;;
-		--no-boot)
-			boot=false
+		--ephemeral)
+			ephemeral=true
 			shift
 			;;
 		--reboot)
@@ -337,6 +339,21 @@ cmd_node_deploy() {
 			;;
 		esac
 	done
+
+	local deployModes=0
+	if [[ $dryRun = true ]]; then
+		deployModes=$((deployModes + 1))
+	fi
+	if [[ $ephemeral = true ]]; then
+		deployModes=$((deployModes + 1))
+	fi
+	if [[ $reboot = true ]]; then
+		deployModes=$((deployModes + 1))
+	fi
+	if ((deployModes > 1)); then
+		echo >&2 "--dry-run, --ephemeral, and --reboot are mutually exclusive"
+		return 1
+	fi
 
 	if [[ $# = 0 ]]; then
 		cmd help node deploy >&2
@@ -380,8 +397,8 @@ in
       inherit nodeNames;
       userFlakeSourcePath = "$flake";
       nixversePath = "@out@";
-      activate = $activate;
-      boot = $boot;
+      dryRun = $dryRun;
+      ephemeral = $ephemeral;
       reboot = $reboot;
     }
   );

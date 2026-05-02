@@ -222,8 +222,8 @@
       nodeNames,
       userFlakeSourcePath,
       nixversePath,
-      activate,
-      boot,
+      dryRun,
+      ephemeral,
       reboot,
     }:
     let
@@ -247,16 +247,18 @@
         sshOpts = map (opt: "-o ${lib.escapeShellArg opt}") node.deploy.sshOpts;
         common = "--flake '${userFlakePath}#${nodeName}' --show-trace";
         rebuildAction =
-          if reboot then
+          if dryRun then
+            "build"
+          else if ephemeral then
+            "test"
+          else if reboot then
             "boot"
-          else if activate then
-            if boot then "switch" else "test"
           else
-            "build";
+            "switch";
         rebuild =
           {
             nixos = "NIX_SSHOPTS=${lib.escapeShellArg sshOpts} nixos-rebuild ${rebuildAction} ${targetHost} ${buildHost} ${useSubstitutes} ${useRemoteSudo} ${common}";
-            darwin = "sudo darwin-rebuild ${if activate then "switch" else "build"} ${common}";
+            darwin = "sudo darwin-rebuild ${if dryRun then "build" else "switch"} ${common}";
           }
           .${node.os};
         rebootCommand =
@@ -266,8 +268,11 @@
             "reboot";
       in
       assert lib.assertMsg (
-        !reboot || node.os == "nixos"
-      ) "--reboot is only supported for NixOS node ${nodeName}";
+        reboot -> node.os == "nixos"
+      ) "--reboot is only supported for a NixOS node, which ${nodeName} is not";
+      assert lib.assertMsg (
+        ephemeral -> node.os == "nixos"
+      ) "--ephemeral is only supported for a NixOS node, which ${nodeName} is not";
       {
         name = nodeName;
         command = lib.concatLines (
