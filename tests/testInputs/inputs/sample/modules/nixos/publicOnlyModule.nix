@@ -1,0 +1,3 @@
+{
+  publicOnlyModuleValue = "public-only-module";
+}

@@ -18,37 +18,12 @@ in
       flakePath,
     }:
     import ./load {
-      inherit lib lib' self;
-      userInputs = lib.mapAttrs (
-        name: input:
-        let
-          homeModules = input.homeManagerModules or input.homeModules or null;
-        in
-        lib.removeAttrs input [
-          "homeManagerModules"
-        ]
-        // lib.optionalAttrs (homeModules != null) {
-          inherit homeModules;
-        }
-      ) (lib.removeAttrs inputs [ "self" ]);
-      userFlake =
-        inputs.self or (throw ''
-          When loading nixverse, you must pass all the flake output arguments,
-          and not just `self.inputs`.
-
-          For example:
-
-              outputs =
-                inputs@{ nixverse, ... }:
-                nixverse.lib.load {
-                  inherit inputs;
-                  flakePath = ./.;
-                };
-
-          To avoid an infinite recursion, *DO NOT* pass `self.inputs` and
-          *DO NOT* pass `inherit (self) inputs`, but pass the output function
-          arguments as `inputs` like above.
-        '');
+      inherit
+        lib
+        lib'
+        self
+        inputs
+        ;
       # This argument needs to be explicitly passed because of a nix limitation
       # https://github.com/hercules-ci/flake-parts/issues/148
       userFlakePath = flakePath;

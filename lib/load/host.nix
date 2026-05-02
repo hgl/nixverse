@@ -5,6 +5,7 @@
   userFlakePath,
   userLib,
   getUserPkgs,
+  getUserInputs,
   userModules,
   userNodes,
   rawNode,
@@ -47,11 +48,9 @@ let
         options
         ;
     in
-    assert lib.assertMsg (
-      options.channel.isDefined
+    assert lib.assertMsg (options.channel.isDefined
     ) "Missing required meta configuration `channel` for host `${hostName}`";
-    assert lib.assertMsg (
-      options.system.isDefined
+    assert lib.assertMsg (options.system.isDefined
     ) "Missing required meta configuration `system` for host `${hostName}`";
     lib.asserts.checkAssertWarn config.assertions config.warnings (
       lib.removeAttrs config [
@@ -59,47 +58,13 @@ let
         "warnings"
       ]
     );
-  inputs' =
-    let
-      v = lib.concatMapAttrs (
-        name: userInput:
-        let
-          input' =
-            lib.removeAttrs userInput [
-              "nixosModules"
-              "darwinModules"
-            ]
-            // lib.optionalAttrs (userInput ? packages && lib.hasAttr system userInput.packages) {
-              packages = userInput.packages.${system};
-            }
-            // {
-              modules =
-                {
-                  nixos = userInput.nixosModules or { };
-                  darwin = userInput.darwinModules or { };
-                }
-                .${os};
-            };
-        in
-        if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
-          { ${lib.removeSuffix "-${os}" name} = input'; }
-        else if channel != "unstable" && lib.hasSuffix "-unstable" name then
-          { ${name} = input'; }
-        else if lib.hasSuffix "-${channel}-${os}" name then
-          { ${lib.removeSuffix "-${channel}-${os}" name} = input'; }
-        else if lib.hasSuffix "-${channel}" name then
-          { ${lib.removeSuffix "-${channel}" name} = input'; }
-        else if lib.hasSuffix "-any" name then
-          { ${lib.removeSuffix "-any" name} = input'; }
-        else
-          { }
-      ) userInputs;
-    in
-    assert lib.assertMsg (v ? nixpkgs)
-      "Missing the flake input nixpkgs-${channel}${
-        lib.optionalString (channel != "unstable") "-${os}"
-      }, required by host ${hostName}";
-    v;
+  inputs' = getUserInputs {
+    inherit
+      system
+      channel
+      os
+      ;
+  };
   baseModule =
     {
       lib,

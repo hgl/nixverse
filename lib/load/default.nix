@@ -2,11 +2,40 @@
   lib,
   lib',
   self,
-  userInputs,
-  userFlake,
+  inputs,
   userFlakePath,
 }:
 let
+  userFlake =
+    inputs.self or (throw ''
+      When loading nixverse, you must pass all the flake output arguments,
+      and not just `self.inputs`.
+
+      For example:
+
+          outputs =
+            inputs@{ nixverse, ... }:
+            nixverse.lib.load {
+              inherit inputs;
+              flakePath = ./.;
+            };
+
+      To avoid an infinite recursion, *DO NOT* pass `self.inputs` and
+      *DO NOT* pass `inherit (self) inputs`, but pass the output function
+      arguments as `inputs` like above.
+    '');
+  userInputs = lib.mapAttrs (
+    name: input:
+    let
+      homeModules = input.homeManagerModules or input.homeModules or null;
+    in
+    lib.removeAttrs input [
+      "homeManagerModules"
+    ]
+    // lib.optionalAttrs (homeModules != null) {
+      inherit homeModules;
+    }
+  ) (lib.removeAttrs inputs [ "self" ]);
   userLib = import ./userLib.nix {
     inherit
       lib
@@ -20,6 +49,15 @@ let
       lib
       lib'
       self
+      userFlakePath
+      ;
+  };
+  getUserInputs = import ./getUserInputs.nix {
+    inherit
+      lib
+      lib'
+      self
+      inputs
       userFlakePath
       ;
   };
@@ -59,6 +97,7 @@ let
           userModules
           rawNode
           getUserPkgs
+          getUserInputs
           ;
         userNodes = lib.concatMapAttrs (
           name: node:

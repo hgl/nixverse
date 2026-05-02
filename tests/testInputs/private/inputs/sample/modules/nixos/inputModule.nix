@@ -1,0 +1,3 @@
+{
+  inputModuleValue = "private-module";
+}

@@ -1,0 +1,3 @@
+{
+  privateModuleValue = "private-only-module";
+}
