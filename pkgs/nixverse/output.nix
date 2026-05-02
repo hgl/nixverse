@@ -224,6 +224,7 @@
       nixversePath,
       activate,
       boot,
+      reboot,
     }:
     let
       localNodeNames = lib.filter (nodeName: nodes.${nodeName}.deploy.targetHost == null) nodeNames;
@@ -243,19 +244,30 @@
         ) "--build-host ${lib.escapeShellArg node.deploy.targetHost}";
         useSubstitutes = lib.optionalString (node.deploy.useSubstitutes) "--use-substitutes";
         useRemoteSudo = lib.optionalString (node.deploy.useRemoteSudo) "--use-remote-sudo";
-        sshOpts = "NIX_SSHOPTS=${
-          lib.escapeShellArg (map (opt: "-o ${lib.escapeShellArg opt}") node.deploy.sshOpts)
-        }";
+        sshOpts = map (opt: "-o ${lib.escapeShellArg opt}") node.deploy.sshOpts;
         common = "--flake '${userFlakePath}#${nodeName}' --show-trace";
+        rebuildAction =
+          if reboot then
+            "boot"
+          else if activate then
+            if boot then "switch" else "test"
+          else
+            "build";
         rebuild =
           {
-            nixos = "${sshOpts} nixos-rebuild ${
-              if activate then if boot then "switch" else "test" else "build"
-            } ${targetHost} ${buildHost} ${useSubstitutes} ${useRemoteSudo} ${common}";
+            nixos = "NIX_SSHOPTS=${lib.escapeShellArg sshOpts} nixos-rebuild ${rebuildAction} ${targetHost} ${buildHost} ${useSubstitutes} ${useRemoteSudo} ${common}";
             darwin = "sudo darwin-rebuild ${if activate then "switch" else "build"} ${common}";
           }
           .${node.os};
+        rebootCommand =
+          if node.deploy.targetHost != null then
+            "ssh ${lib.concatStringsSep " " sshOpts} ${lib.escapeShellArg node.deploy.targetHost} ${lib.optionalString node.deploy.useRemoteSudo "sudo "}reboot"
+          else
+            "reboot";
       in
+      assert lib.assertMsg (
+        !reboot || node.os == "nixos"
+      ) "--reboot is only supported for NixOS node ${nodeName}";
       {
         name = nodeName;
         command = lib.concatLines (
@@ -267,6 +279,7 @@
             ". ${lib.escapeShellArg "${nixversePath}/share/nixverse/utils.sh"}"
             "rsync_fs ${lib.escapeShellArg node.deploy.targetHost} ${lib.escapeShellArg "${userFlakeSourcePath}/build/nodes/${nodeName}/fs"}"
           ]
+          ++ lib.optional reboot rebootCommand
         );
       }
     ) nodeNames;

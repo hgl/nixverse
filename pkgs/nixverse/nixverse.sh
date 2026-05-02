@@ -287,18 +287,20 @@ Deploy one or more nodes.
 
 Options:
   -p, --parallel <num>      number of nodes to deploy in parallel (default: 10)
+  --reboot                  deploy with nixos-rebuild boot, then reboot
   -h, --help                show this help
 EOF
 }
 cmd_node_deploy() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,no-activate,no-boot' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,no-activate,no-boot,reboot' -- "$@")
 	eval set -- "$args"
 	unset args
 
 	local parallel=$default_parallel
 	local activate=true
 	local boot=true
+	local reboot=false
 	while true; do
 		case $1 in
 		-p | --parallel)
@@ -315,6 +317,10 @@ cmd_node_deploy() {
 			;;
 		--no-boot)
 			boot=false
+			shift
+			;;
+		--reboot)
+			reboot=true
 			shift
 			;;
 		-h | --help)
@@ -376,6 +382,7 @@ in
       nixversePath = "@out@";
       activate = $activate;
       boot = $boot;
+      reboot = $reboot;
     }
   );
 }
