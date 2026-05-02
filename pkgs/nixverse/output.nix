@@ -259,7 +259,10 @@
       {
         name = nodeName;
         command = lib.concatLines (
-          [ rebuild ]
+          [
+            "set -e"
+            rebuild
+          ]
           ++ lib.optionals (node.deploy.targetHost != null) [
             ". ${lib.escapeShellArg "${nixversePath}/share/nixverse/utils.sh"}"
             "rsync_fs ${lib.escapeShellArg node.deploy.targetHost} ${lib.escapeShellArg "${userFlakeSourcePath}/build/nodes/${nodeName}/fs"}"
