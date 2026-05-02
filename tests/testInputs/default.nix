@@ -27,6 +27,8 @@ in
         flakeOnlyModuleValue
         publicOnlyModuleValue
         privateModuleValue
+        folderOnlyPkg
+        folderOnlyModuleValue
         ;
     };
     expected = {
@@ -41,6 +43,8 @@ in
       flakeOnlyModuleValue = "flake-only-module";
       publicOnlyModuleValue = "public-only-module";
       privateModuleValue = "private-only-module";
+      folderOnlyPkg = "folder-only-x86_64-linux";
+      folderOnlyModuleValue = "folder-only-module";
     };
   };
 }

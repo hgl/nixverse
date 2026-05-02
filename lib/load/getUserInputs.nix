@@ -94,7 +94,7 @@ assert lib.assertMsg (userFlakeInputs ? nixpkgs)
   "Missing the flake input nixpkgs-${channel}${lib.optionalString (channel != "unstable") "-${os}"}";
 lib.genAttrs (lib.unique (lib.attrNames userFlakeInputs ++ lib.attrNames userFolderInputs)) (
   inputName:
-  userFlakeInputs.${inputName}
+  userFlakeInputs.${inputName} or { }
   // {
     packages =
       (userFlakeInputs.${inputName}.packages or { }) // (userFolderInputs.${inputName}.packages or { });

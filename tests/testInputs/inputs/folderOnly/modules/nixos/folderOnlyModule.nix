@@ -1,0 +1,3 @@
+{
+  folderOnlyModuleValue = "folder-only-module";
+}

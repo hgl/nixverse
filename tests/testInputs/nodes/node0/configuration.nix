@@ -9,6 +9,7 @@
     inputs'.sample.modules.flakeOnlyModule
     inputs'.sample.modules.publicOnlyModule
     inputs'.sample.modules.privateModule
+    inputs'.folderOnly.modules.folderOnlyModule
   ];
 
   options.pkg = lib.mkOption {
@@ -44,6 +45,12 @@
   options.privateModuleValue = lib.mkOption {
     type = lib.types.str;
   };
+  options.folderOnlyPkg = lib.mkOption {
+    type = lib.types.str;
+  };
+  options.folderOnlyModuleValue = lib.mkOption {
+    type = lib.types.str;
+  };
 
   config.pkg = inputs'.sample.packages.pkg;
   config.flakeOnlyPkg = inputs'.sample.packages.flakeOnlyPkg;
@@ -52,4 +59,5 @@
   config.extraLegacyPkg = inputs'.sample.legacyPackages.extraLegacyPkg;
   config.publicOnlyPkg = inputs'.sample.packages.publicOnlyPkg;
   config.extraPkg = inputs'.sample.packages.extra;
+  config.folderOnlyPkg = inputs'.folderOnly.packages.pkg;
 }
