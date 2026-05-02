@@ -4,32 +4,32 @@
   userLib,
   userInputs,
   userFlakePath,
-  userEntities,
-  entities,
+  userNodes,
+  nodes,
 }:
 {
   getNodeNames =
-    entityNames:
+    nodeNames:
     lib.attrNames (
       lib'.concatMapListToAttrs (
-        entityName:
+        nodeName:
         let
-          entity = entities.${entityName};
+          node = nodes.${nodeName};
         in
-        assert lib.assertMsg (lib.hasAttr entityName entities) "Unknown node ${entityName}";
+        assert lib.assertMsg (lib.hasAttr nodeName nodes) "Unknown node ${nodeName}";
         {
-          node = {
-            ${entityName} = true;
+          host = {
+            ${nodeName} = true;
           };
-          group = lib.mapAttrs (nodeName: node: true) entity.nodes;
+          group = lib.mapAttrs (nodeName: node: true) node.hosts;
         }
-        .${entity.type}
-      ) entityNames
+        .${node.type}
+      ) nodeNames
     );
   validNodeName =
     nodeName:
-    assert lib.assertMsg (lib.hasAttr nodeName entities) "Unknown node ${nodeName}";
-    assert lib.assertMsg (entities.${nodeName}.type == "node") "${nodeName} is a group, not a node";
+    assert lib.assertMsg (lib.hasAttr nodeName nodes) "Unknown node ${nodeName}";
+    assert lib.assertMsg (nodes.${nodeName}.type == "host") "${nodeName} is a group, not a node";
     true;
   getNodesMakefile =
     nodeNames: lib.concatLines (map (nodeName: "$(eval $(call DefineNode,${nodeName}))") nodeNames);
@@ -39,7 +39,7 @@
       map (
         nodeName:
         let
-          node = entities.${nodeName};
+          node = nodes.${nodeName};
         in
         "$(eval $(call DefineNodeSecrets,${nodeName},${node.dir}))"
       ) nodeNames
@@ -74,30 +74,30 @@
       map (
         nodeName:
         let
-          node = entities.${nodeName};
+          node = nodes.${nodeName};
         in
         "${nodeName},${node.dir},${toString (lib.attrNames node.groups)}"
       ) nodeNames
     );
   userMakefile = lib.concatLines (
     lib'.concatMapAttrsToList (
-      entityName: entity:
+      nodeName: node:
       {
-        node = [
-          ".PHONY: nodes/${entityName}"
-          "node_${entityName}_os := ${entity.os}"
-          "node_${entityName}_channel := ${entity.channel}"
+        host = [
+          ".PHONY: nodes/${nodeName}"
+          "node_${nodeName}_os := ${node.os}"
+          "node_${nodeName}_channel := ${node.channel}"
         ];
         group = [
-          ".PHONY: nodes/${entityName}"
-          "nodes/${entityName}: ${
-            toString (map (descendantName: "nodes/${descendantName}") (lib.attrNames entity.descendants))
+          ".PHONY: nodes/${nodeName}"
+          "nodes/${nodeName}: ${
+            toString (map (descendantName: "nodes/${descendantName}") (lib.attrNames node.descendants))
           }"
-          "group_${entityName}_nodes := ${toString (lib.attrNames entity.nodes)}"
+          "group_${nodeName}_nodes := ${toString (lib.attrNames node.hosts)}"
         ];
       }
-      .${entity.type}
-    ) entities
+      .${node.type}
+    ) nodes
   );
   getNodeInstallCommands =
     {
@@ -108,7 +108,7 @@
     map (
       nodeName:
       let
-        node = entities.${nodeName};
+        node = nodes.${nodeName};
         targetHostArg = lib.escapeShellArg node.install.targetHost;
         sshOpts = "${lib.escapeShellArg (map (opt: "-o ${lib.escapeShellArg opt}") node.deploy.sshOpts)}";
         hwFileArg = lib.escapeShellArg "${userFlakeSourcePath}/${node.dir}/hardware-configuration.nix";
@@ -204,7 +204,7 @@
     map (
       nodeName:
       let
-        node = entities.${nodeName};
+        node = nodes.${nodeName};
         attrPath =
           {
             nixos = "nixosConfigurations.${nodeName}.config.system.build.toplevel";
@@ -226,7 +226,7 @@
       boot,
     }:
     let
-      localNodeNames = lib.filter (nodeName: entities.${nodeName}.deploy.targetHost == null) nodeNames;
+      localNodeNames = lib.filter (nodeName: nodes.${nodeName}.deploy.targetHost == null) nodeNames;
     in
     assert lib.assertMsg (
       lib.length localNodeNames <= 1
@@ -234,7 +234,7 @@
     map (
       nodeName:
       let
-        node = entities.${nodeName};
+        node = nodes.${nodeName};
         targetHost = lib.optionalString (
           node.deploy.targetHost != null
         ) "--target-host ${lib.escapeShellArg node.deploy.targetHost}";
@@ -276,7 +276,7 @@
     map (
       nodeName:
       let
-        node = entities.${nodeName};
+        node = nodes.${nodeName};
       in
       assert lib.assertMsg (
         node.deploy.targetHost != null
@@ -292,7 +292,7 @@
   getNodeRsyncCommands =
     nodeNames: userFlakeSourcePath: nixversePath:
     let
-      localNodeNames = lib.filter (nodeName: entities.${nodeName}.deploy.targetHost == null) nodeNames;
+      localNodeNames = lib.filter (nodeName: nodes.${nodeName}.deploy.targetHost == null) nodeNames;
     in
     assert lib.assertMsg (
       lib.length localNodeNames <= 1
@@ -300,7 +300,7 @@
     lib.concatMap (
       nodeName:
       let
-        node = entities.${nodeName};
+        node = nodes.${nodeName};
       in
       lib.optional (node.deploy.targetHost != null) {
         name = nodeName;

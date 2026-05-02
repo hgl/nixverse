@@ -8,8 +8,8 @@
   userLib,
   getUserPkgs,
   userModules,
-  userEntities,
-  entities,
+  userNodes,
+  nodes,
 }:
 let
   userFlakeModules =
@@ -23,14 +23,14 @@ let
   loadConfigurations =
     os:
     lib.concatMapAttrs (
-      name: entity:
-      if entity.type == "node" && entity.os == os then
+      name: node:
+      if node.type == "host" && node.os == os then
         {
-          ${name} = entity.configuration;
+          ${name} = node.configuration;
         }
       else
         { }
-    ) entities;
+    ) nodes;
   userOutputs =
     let
       inherit (self.inputs) flake-parts;
@@ -41,7 +41,7 @@ let
           self = userFlake;
         };
         specialArgs = {
-          nodes = userEntities;
+          nodes = userNodes;
           nixosModules' = userModules.nixos;
           darwinModules' = userModules.darwin;
           homeModules' = userModules.home;
@@ -99,8 +99,8 @@ assert lib.assertMsg (
     inherit
       lib
       lib'
-      userEntities
-      entities
+      userNodes
+      nodes
       ;
     inherit (userFlake) inputs;
     getSecrets = import ./getSecrets.nix {
@@ -109,8 +109,8 @@ assert lib.assertMsg (
         lib'
         userInputs
         userLib
-        userEntities
-        entities
+        userNodes
+        nodes
         ;
     };
   }
@@ -121,8 +121,8 @@ assert lib.assertMsg (
       userLib
       userInputs
       userFlakePath
-      userEntities
-      entities
+      userNodes
+      nodes
       ;
   };
   nixosConfigurations = loadConfigurations "nixos";

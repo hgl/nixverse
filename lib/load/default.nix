@@ -30,26 +30,26 @@ let
       userFlakePath
       ;
   };
-  userEntities = lib.mapAttrs (
-    entityName: entity:
+  userNodes = lib.mapAttrs (
+    nodeName: node:
     {
-      node = lib.removeAttrs entity [
+      host = lib.removeAttrs node [
         "configuration"
         "dir"
         "diskConfigPaths"
         "sshHostKeyPath"
         "recursiveFoldParentNames"
       ];
-      group = lib.removeAttrs entity [
+      group = lib.removeAttrs node [
         "recursiveFoldChildNames"
       ];
     }
-    .${entity.type}
-  ) entities;
-  entities = lib.mapAttrs (
-    entityName: rawEntity:
+    .${node.type}
+  ) nodes;
+  nodes = lib.mapAttrs (
+    nodeName: rawNode:
     {
-      node = import ./node.nix {
+      host = import ./host.nix {
         inherit
           lib
           lib'
@@ -57,31 +57,31 @@ let
           userFlakePath
           userLib
           userModules
-          rawEntity
+          rawNode
           getUserPkgs
           ;
-        userEntities = lib.concatMapAttrs (
-          name: entity:
+        userNodes = lib.concatMapAttrs (
+          name: node:
           {
-            ${name} = entity;
+            ${name} = node;
           }
-          // lib.optionalAttrs (name == entityName) {
-            current = entity;
+          // lib.optionalAttrs (name == nodeName) {
+            current = node;
           }
-        ) userEntities;
+        ) userNodes;
       };
       group = import ./group.nix {
         inherit
           lib
           lib'
-          userEntities
-          rawEntity
+          userNodes
+          rawNode
           ;
       };
     }
-    .${rawEntity.type}
-  ) rawEntities;
-  rawEntities = import ./rawEntities.nix {
+    .${rawNode.type}
+  ) rawNodes;
+  rawNodes = import ./rawNodes.nix {
     inherit
       lib
       lib'
@@ -99,8 +99,8 @@ let
       userLib
       getUserPkgs
       userModules
-      entities
-      userEntities
+      nodes
+      userNodes
       ;
   };
 in

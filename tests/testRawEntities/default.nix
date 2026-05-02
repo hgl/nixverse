@@ -5,7 +5,7 @@
   ...
 }:
 let
-  rawEntities = import ../../lib/load/rawEntities.nix {
+  rawNodes = import ../../lib/load/rawNodes.nix {
     inherit lib lib';
     userFlakePath = userFlake.outPath;
   };
@@ -16,17 +16,17 @@ let
   };
 in
 {
-  rawEntities = {
+  rawNodes = {
     expr = lib.mapAttrs (
-      entityName: rawEntity:
-      lib.removeAttrs rawEntity [
+      nodeName: rawNode:
+      lib.removeAttrs rawNode [
         "recursiveFoldChildNames"
         "recursiveFoldParentNames"
       ]
-    ) rawEntities;
+    ) rawNodes;
     expected = {
       node0 = {
-        type = "node";
+        type = "host";
         name = "node0";
         createdByGroup = false;
         path = "${userFlake}/nodes/node0";
@@ -54,7 +54,7 @@ in
           }
           {
             loc = [ ];
-            file = "${userFlake}/nodes/node0/node.nix";
+            file = "${userFlake}/nodes/node0/host.nix";
             value = {
               os = "nixos";
               channel = "unstable";
@@ -63,7 +63,7 @@ in
         ];
       };
       groupNode0 = {
-        type = "node";
+        type = "host";
         name = "groupNode0";
         createdByGroup = true;
         path = "${userFlake}/nodes/group1/groupNode0";
@@ -113,7 +113,7 @@ in
           "groupNode0"
           "node0"
         ];
-        nodeNames = [
+        hostNames = [
           "groupNode0"
           "node0"
         ];
@@ -133,7 +133,7 @@ in
           "groupNode0"
           "node1priv"
         ];
-        nodeNames = [
+        hostNames = [
           "groupNode0"
           "node1priv"
         ];
@@ -153,13 +153,13 @@ in
           "groupNode0"
           "node0"
         ];
-        nodeNames = [
+        hostNames = [
           "groupNode0"
           "node0"
         ];
       };
       node1priv = {
-        type = "node";
+        type = "host";
         name = "node1priv";
         createdByGroup = false;
         path = "${userFlake}/nodes/node1priv";
@@ -174,7 +174,7 @@ in
           }
           {
             loc = [ ];
-            file = "${userFlake}/private/nodes/node1priv/node.nix";
+            file = "${userFlake}/private/nodes/node1priv/host.nix";
             value = { };
           }
         ];

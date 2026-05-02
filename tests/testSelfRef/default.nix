@@ -5,14 +5,14 @@
   ...
 }:
 let
-  rawEntities = import ../../lib/load/rawEntities.nix {
+  rawNodes = import ../../lib/load/rawNodes.nix {
     inherit lib lib';
     userFlakePath = userFlake.outPath;
   };
 in
 {
   selfRef = {
-    expr = rawEntities.selfRef;
+    expr = rawNodes.selfRef;
     expectedError = {
       type = "ThrownError";
       msg = "Group cannot contain itself: /.+";

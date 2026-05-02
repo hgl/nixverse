@@ -50,14 +50,14 @@ Now your directory structure becomes meaningful to Nix. (`flakePath = ./.` is ne
 
 Let’s walk through some common tasks that Nixverse makes easier.
 
-### Define and Deploy a Node
+### Define and Deploy a Host
 
-A node is simply a single machine, defined by creating a `node.nix` file under a `nodes/<hostName>` directory. The `<hostName>` will serve as a handle to refer to the machine and the machine’s host name (which can be overridden in its configuration).
+A host is simply a single machine, defined by creating a `host.nix` file under a `nodes/<hostName>` directory. The `<hostName>` will serve as a handle to refer to the machine and the machine’s host name (which can be overridden in its configuration).
 
-Inside `node.nix`, specify the `os` (`nixos` or `darwin`) and the `channel` to use. The `os` decides determines whether the machine uses NixOS or [nix-darwin](https://github.com/nix-darwin/nix-darwin). The `channel` decides which flake inputs are made available to the node.
+Inside `host.nix`, specify the `os` (`nixos` or `darwin`) and the `channel` to use. The `os` decides determines whether the machine uses NixOS or [nix-darwin](https://github.com/nix-darwin/nix-darwin). The `channel` decides which flake inputs are made available to the host.
 
 ```nix
-# nodes/hgl/node.nix
+# nodes/hgl/host.nix
 {
   os = "nixos";
   channel = "unstable";
@@ -106,9 +106,9 @@ To define a group of machines, create a `group.nix` file under a `nodes/<groupNa
 }
 ```
 
-This file must contain an attribute set, where each attribute represents a node (or a group) with the same format as `node.nix`. The `common` attribute is special — its content is shared across other nodes (or groups) in this group.
+This file must contain an attribute set, where each attribute represents a host or group with the same format as `host.nix`. The `common` attribute is special — its content is shared across other nodes (or groups) in this group.
 
-Notice the use of `lib.mkDefault`. The contents of `node.nix` and the attributes of `group.nix` are called meta configuration in Nixverse. These are actually special NixOS modules, so [the option priority rules](https://nixos.org/manual/nixos/stable/#sec-option-definitions-setting-priorities) apply. See [the reference for the available options](./doc/reference.md#meta-configuration).
+Notice the use of `lib.mkDefault`. The contents of `host.nix` and the attributes of `group.nix` are called meta configuration in Nixverse. These are actually special NixOS modules, so [the option priority rules](https://nixos.org/manual/nixos/stable/#sec-option-definitions-setting-priorities) apply. See [the reference for the available options](./doc/reference.md#meta-configuration).
 
 Add the relevant flake inputs so nodes can use the nixpkgs channel they specify:
 
@@ -532,8 +532,8 @@ A typical Nixverse-managed flake looks like this:
 ```
 your-flake/
 ├─ nodes/
-│  ├─ your-node-name/
-│  │  ├─ node.nix
+│  ├─ your-host-name/
+│  │  ├─ host.nix
 │  │  ├─ configuration.nix
 │  │  └─ users/
 │  │     └─ your-user-name/
@@ -565,9 +565,9 @@ your-flake/
 └─ flake.lock
 ```
 
-- **nodes**: nodes and groups, one in each sub-directory
-  - **node.nix**: defines the OS (e.g., NixOS or Darwin), nixpkgs channel, etc for a node
-  - **group.nix**: similar to **node.nix**, defines sub-nodes en masse
+- **nodes**: hosts and groups, one in each sub-directory
+  - **host.nix**: defines the OS (e.g., NixOS or Darwin), nixpkgs channel, etc. for a host
+  - **group.nix**: similar to **host.nix**, defines child hosts or groups en masse
   - **common**: common configurations for sub-nodes in a group
   - **configuration.nix**: NixOS or nix-darwin configuration
   - **home.nix**: [Home Manager](https://github.com/nix-community/home-manager) configuration

@@ -121,8 +121,8 @@ let
     userMakefile
     getNodeInstallCommands
     ;
-  entityNames = lib.splitString " " "$*";
-  nodeNames = getNodeNames entityNames;
+  inputNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames inputNames;
   secrets = getSecrets ($(<"$secrets_nix"));
   secretsNodeNames = lib.intersectLists nodeNames secrets.nodeNames;
 in
@@ -237,8 +237,8 @@ let
     userMakefile
     getNodeBuildCommands
     ;
-  entityNames = lib.splitString " " "$*";
-  nodeNames = getNodeNames entityNames;
+  inputNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames inputNames;
   secrets = getSecrets ($(<"$secrets_nix"));
   secretsNodeNames = lib.intersectLists nodeNames secrets.nodeNames;
 in
@@ -359,8 +359,8 @@ let
     userMakefile
     getNodeDeployCommands
     ;
-  entityNames = lib.splitString " " "$*";
-  nodeNames = getNodeNames entityNames;
+  inputNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames inputNames;
   secrets = getSecrets ($(<"$secrets_nix"));
   secretsNodeNames = lib.intersectLists nodeNames secrets.nodeNames;
 in
@@ -456,8 +456,8 @@ let
     getNodeNames
     getNodeGenhwCommands
     ;
-  entityNames = lib.splitString " " "$*";
-  nodeNames = getNodeNames entityNames;
+  inputNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames inputNames;
 in
 {
   "cmds.json" = builtins.toJSON (
@@ -533,8 +533,8 @@ let
     userMakefile
     getNodeRsyncCommands
     ;
-  entityNames = lib.splitString " " "$*";
-  nodeNames = getNodeNames entityNames;
+  inputNames = lib.splitString " " "$*";
+  nodeNames = getNodeNames inputNames;
   secrets = getSecrets ($(<"$secrets_nix"));
   secretsNodeNames = lib.intersectLists nodeNames secrets.nodeNames;
 in
@@ -626,7 +626,7 @@ let
   lib = flake.nixverse.inputs.nixpkgs-unstable.lib;
   lib' = flake.lib;
   inherit (flake.nixverse) inputs;
-  nodes = flake.nixverse.userEntities;
+  nodes = flake.nixverse.userNodes;
 in
 $expr
 EOF
@@ -1116,7 +1116,7 @@ let
   lib = flake.nixverse.inputs.nixpkgs-unstable.lib;
   lib' = flake.lib;
   inherit (flake.nixverse) inputs;
-  nodes = flake.nixverse.userEntities;
+  nodes = flake.nixverse.userNodes;
   secrets = builtins.fromJSON (
     builtins.readFile "$(realpath --no-symlinks "$flake")/build/secrets.json"
   );

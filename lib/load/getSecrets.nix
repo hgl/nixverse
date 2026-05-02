@@ -3,8 +3,8 @@
   lib',
   userInputs,
   userLib,
-  userEntities,
-  entities,
+  userNodes,
+  nodes,
 }:
 raw:
 let
@@ -12,7 +12,7 @@ let
     lib = userInputs.nixpkgs-unstable.lib;
     lib' = userLib;
     inputs = userInputs;
-    nodes = userEntities;
+    nodes = userNodes;
     secrets = secretsAttrs;
   };
   secrets =
@@ -25,22 +25,22 @@ let
       ];
     }).config;
   nodeNameAttrs = lib.concatMapAttrs (
-    entityName: _:
+    nodeName: _:
     let
-      entity = entities.${entityName};
+      node = nodes.${nodeName};
     in
     {
-      node = {
-        ${entityName} = true;
+      host = {
+        ${nodeName} = true;
       };
-      group = lib.mapAttrs (nodeName: node: true) entity.nodes;
+      group = lib.mapAttrs (nodeName: node: true) node.hosts;
     }
-    .${entity.type}
+    .${node.type}
   ) secrets.nodes;
   nodesSecrets = lib.mapAttrs (
     nodeName: _:
     let
-      node = entities.${nodeName};
+      node = nodes.${nodeName};
     in
     node.recursiveFoldParentNames (
       acc: parentNames: _:

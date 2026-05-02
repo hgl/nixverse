@@ -10,12 +10,12 @@ let
     };
     flakePath = userFlake.outPath;
   };
-  inherit (outputs.nixverse) entities;
+  inherit (outputs.nixverse) nodes;
 in
 {
   node0 = {
     expr = {
-      inherit (entities.node0)
+      inherit (nodes.node0)
         type
         name
         os
@@ -23,11 +23,11 @@ in
         foo
         ;
       parents = {
-        group0 = entities.node0.parents.group0.name;
+        group0 = nodes.node0.parents.group0.name;
       };
     };
     expected = {
-      type = "node";
+      type = "host";
       name = "node0";
       os = "nixos";
       channel = "master";
@@ -44,9 +44,9 @@ in
   };
   group0 = {
     expr = {
-      inherit (entities.group0) type name;
+      inherit (nodes.group0) type name;
       children = {
-        node0 = entities.group0.children.node0.name;
+        node0 = nodes.group0.children.node0.name;
       };
     };
     expected = {
@@ -59,7 +59,7 @@ in
   };
   groupNode0 = {
     expr = {
-      inherit (entities.groupNode0)
+      inherit (nodes.groupNode0)
         type
         name
         os
@@ -67,11 +67,11 @@ in
         foo
         ;
       parents = {
-        group0 = entities.groupNode0.parents.group0.name;
+        group0 = nodes.groupNode0.parents.group0.name;
       };
     };
     expected = {
-      type = "node";
+      type = "host";
       name = "groupNode0";
       os = "darwin";
       channel = "foo";
@@ -86,7 +86,7 @@ in
     };
   };
   args = {
-    expr = entities.args.deploy.targetHost;
+    expr = nodes.args.deploy.targetHost;
     expected = "1 baz 1 args x86_64-linux";
   };
 }

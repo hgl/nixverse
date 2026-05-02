@@ -6,11 +6,11 @@
   userLib,
   getUserPkgs,
   userModules,
-  userEntities,
-  rawEntity,
+  userNodes,
+  rawNode,
 }:
 let
-  nodeName = rawEntity.name;
+  hostName = rawNode.name;
   inherit (metaConfig) os channel;
   metaConfig =
     let
@@ -20,7 +20,7 @@ let
             lib' = userLib;
             lib = userInputs.nixpkgs-unstable.lib;
             inputs = userInputs;
-            nodes = userEntities;
+            nodes = userNodes;
           };
           modules = [
             ./modules/nixos/assertions.nix
@@ -38,10 +38,10 @@ let
               // lib'.call def.value {
                 inherit (args) lib lib';
                 inputs = userInputs;
-                nodes = userEntities;
+                nodes = userNodes;
               }
             )
-          ) rawEntity.defs;
+          ) rawNode.defs;
         })
         config
         ;
@@ -88,7 +88,7 @@ let
     assert lib.assertMsg (v ? nixpkgs)
       "Missing the flake input nixpkgs-${channel}${
         lib.optionalString (channel != "unstable") "-${os}"
-      }, required by node ${nodeName}";
+      }, required by host ${hostName}";
     v;
   baseModule =
     {
@@ -109,7 +109,7 @@ let
       lib' = userLib;
       inputs' = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) inputs';
       modules' = userModules.${os};
-      nodes = userEntities;
+      nodes = userNodes;
     }
     // lib.optionalAttrs (lib.pathExists "${userFlakePath}/private") {
       privatePath = "${userFlakePath}/private";
@@ -124,7 +124,7 @@ let
       assert lib.assertMsg (inputs' ? disko)
         "Missing the flake input disko-${channel}${
           lib.optionalString (channel != "unstable") "-${os}"
-        }, required by node ${nodeName}";
+        }, required by host ${hostName}";
       {
         imports = [ inputs'.disko.modules.disko ];
       }
@@ -133,7 +133,7 @@ let
       assert lib.assertMsg (inputs' ? sops-nix)
         "Missing the flake input sops-nix-${channel}${
           lib.optionalString (channel != "unstable") "-${os}"
-        }, required by node ${nodeName}";
+        }, required by host ${hostName}";
       {
         imports = [ inputs'.sops-nix.modules.sops ];
         sops.defaultSopsFile = lib.mkDefault secretsPaths;
@@ -143,7 +143,7 @@ let
       assert lib.assertMsg (inputs' ? home-manager)
         "Missing the flake input home-manager-${channel}${
           lib.optionalString (channel != "unstable") "-${os}"
-        }, required by node ${nodeName}";
+        }, required by host ${hostName}";
       (
         { pkgs', ... }:
         {
@@ -161,7 +161,7 @@ let
                 }
               ) inputs';
               modules' = userModules.home;
-              nodes = userEntities;
+              nodes = userNodes;
             };
             users = lib.mapAttrs (userName: paths: {
               imports = paths;
@@ -178,14 +178,14 @@ let
     let
       paths = recursiveFindFiles "configuration.nix";
     in
-    assert lib.assertMsg (lib.length paths != 0) "Missing ${rawEntity.path}/configuration.nix";
+    assert lib.assertMsg (lib.length paths != 0) "Missing ${rawNode.path}/configuration.nix";
     paths;
   diskConfigPaths = lib.optionals (os == "nixos") (recursiveFindFiles "disk-config.nix");
   sshHostKeyPath =
     let
       paths =
-        lib'.optionalPath "${rawEntity.path}/secrets/fs/etc/ssh/ssh_host_ed25519_key"
-        ++ lib'.optionalPath "${rawEntity.privatePath}/secrets/fs/etc/ssh/ssh_host_ed25519_key";
+        lib'.optionalPath "${rawNode.path}/secrets/fs/etc/ssh/ssh_host_ed25519_key"
+        ++ lib'.optionalPath "${rawNode.privatePath}/secrets/fs/etc/ssh/ssh_host_ed25519_key";
       n = lib.length paths;
       path = lib.head paths;
     in
@@ -198,8 +198,8 @@ let
   secretsPaths =
     let
       paths =
-        lib'.optionalPath "${rawEntity.path}/secrets/default.yaml"
-        ++ lib'.optionalPath "${rawEntity.privatePath}/secrets/default.yaml";
+        lib'.optionalPath "${rawNode.path}/secrets/default.yaml"
+        ++ lib'.optionalPath "${rawNode.privatePath}/secrets/default.yaml";
       n = lib.length paths;
       path = lib.head paths;
     in
@@ -212,7 +212,7 @@ let
         assert lib.assertMsg (inputs' ? nix-darwin)
           "Missing the flake input nix-darwin-${channel}${
             lib.optionalString (channel != "unstable") "-${os}"
-          }, required by node ${nodeName}";
+          }, required by host ${hostName}";
         inputs'.nix-darwin.lib.darwinSystem;
     }
     .${os};
@@ -224,30 +224,30 @@ let
       parentName:
       lib'.optionalPath "${userFlakePath}/nodes/${parentName}/common/${fileName}"
       ++ lib'.optionalPath "${userFlakePath}/private/nodes/${parentName}/common/${fileName}"
-    ) rawEntity.groupNames
-    ++ lib'.optionalPath "${rawEntity.path}/${fileName}"
-    ++ lib'.optionalPath "${rawEntity.privatePath}/${fileName}";
+    ) rawNode.groupNames
+    ++ lib'.optionalPath "${rawNode.path}/${fileName}"
+    ++ lib'.optionalPath "${rawNode.privatePath}/${fileName}";
   homeFiles = lib'.importPathsInSubdirs (
     lib.concatMap (parentName: [
       "${userFlakePath}/nodes/${parentName}/common/users"
       "${userFlakePath}/private/nodes/${parentName}/common/users"
-    ]) rawEntity.groupNames
+    ]) rawNode.groupNames
     ++ [
-      "${rawEntity.path}/users"
-      "${rawEntity.privatePath}/users"
+      "${rawNode.path}/users"
+      "${rawNode.privatePath}/users"
     ]
   ) [ "home" ];
 in
-lib.removeAttrs rawEntity [
+lib.removeAttrs rawNode [
   "createdByGroup"
   "parentNames"
   "groupNames"
 ]
 // metaConfig
 // {
-  parents = lib.genAttrs rawEntity.parentNames (name: userEntities.${name});
-  groups = lib.genAttrs rawEntity.groupNames (name: userEntities.${name});
+  parents = lib.genAttrs rawNode.parentNames (name: userNodes.${name});
+  groups = lib.genAttrs rawNode.groupNames (name: userNodes.${name});
   inherit configuration diskConfigPaths sshHostKeyPath;
   inherit (configuration) config;
-  dir = lib.removePrefix "${userFlakePath}/" rawEntity.path;
+  dir = lib.removePrefix "${userFlakePath}/" rawNode.path;
 }

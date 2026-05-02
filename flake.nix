@@ -73,8 +73,8 @@
                 pkgs.nixfmt
                 pkgs.shfmt
                 pkgs.shellcheck
-                pkgs.nodePackages.bash-language-server
-                pkgs.nodePackages.yaml-language-server
+                pkgs.bash-language-server
+                pkgs.yaml-language-server
                 pkgs.nix-unit
                 config.packages.nixverse
               ];

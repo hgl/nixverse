@@ -4,10 +4,10 @@
   userFlakePath,
 }:
 let
-  rawEntities = lib.mapAttrs (
-    entityName: raw:
+  rawNodes = lib.mapAttrs (
+    nodeName: raw:
     {
-      node = raw // {
+      host = raw // {
         defs =
           recursiveFoldParentNames (
             acc: parentNames: childName:
@@ -25,10 +25,10 @@ let
                   inherit (def) file;
                   value = def.value.${childName};
                 }
-              ) linkedEntities.${parentName}.defs
+              ) linkedNodes.${parentName}.defs
             ) parentNames
             ++ acc
-          ) [ ] [ entityName ]
+          ) [ ] [ nodeName ]
           ++ raw.defs;
       };
       group =
@@ -38,11 +38,11 @@ let
             lib.any (
               parentName:
               let
-                entity = linkedEntities.${parentName};
+                node = linkedNodes.${parentName};
               in
               assert lib.assertMsg (!lib.hasAttr parentName visited)
                 "cyclic group containment: ${lib.concatStringsSep " ⊇ " ([ parentName ] ++ path)}";
-              cyclic entity.parentNames (
+              cyclic node.parentNames (
                 visited
                 // {
                   ${parentName} = true;
@@ -55,14 +55,14 @@ let
               acc: childNames: parentName:
               acc ++ childNames
             ) [ ] raw.childNames;
-          nodeNames = lib.filter (name: linkedEntities.${name}.type == "node") descendantNames;
+          hostNames = lib.filter (name: linkedNodes.${name}.type == "host") descendantNames;
         in
-        assert !(cyclic raw.parentNames { ${entityName} = true; } [ entityName ]);
-        assert lib.assertMsg (lib.length nodeNames != 0) "Group is empty: ${(lib.head raw.defs).file}";
+        assert !(cyclic raw.parentNames { ${nodeName} = true; } [ nodeName ]);
+        assert lib.assertMsg (lib.length hostNames != 0) "Group is empty: ${(lib.head raw.defs).file}";
         lib.removeAttrs raw [ "defs" ]
         // {
-          inherit descendantNames nodeNames;
-          recursiveFoldChildNames = f: nul: recursiveFoldChildNames f nul [ entityName ];
+          inherit descendantNames hostNames;
+          recursiveFoldChildNames = f: nul: recursiveFoldChildNames f nul [ nodeName ];
         };
     }
     .${raw.type}
@@ -73,21 +73,21 @@ let
           parentNames ++ acc
         ) [ ] raw.parentNames
         ++ raw.parentNames;
-      recursiveFoldParentNames = f: nul: recursiveFoldParentNames f nul [ entityName ];
+      recursiveFoldParentNames = f: nul: recursiveFoldParentNames f nul [ nodeName ];
     }
-  ) linkedEntities;
-  linkedEntities = lib.mapAttrs (
-    entityName: raws:
+  ) linkedNodes;
+  linkedNodes = lib.mapAttrs (
+    nodeName: raws:
     let
       reversedRaws = lib.reverseList raws;
       baseRaw = lib.findFirst (raw: raw.type != null) (lib.head reversedRaws) reversedRaws;
-      type = if baseRaw.type == null then "node" else baseRaw.type;
-      dir = baseRaw.dir or "nodes/${entityName}";
+      type = if baseRaw.type == null then "host" else baseRaw.type;
+      dir = baseRaw.dir or "nodes/${nodeName}";
       defs = lib.concatMap (raw: lib.optional (raw ? def) raw.def) raws;
     in
     {
       inherit type defs;
-      name = entityName;
+      name = nodeName;
       path = "${userFlakePath}/${dir}";
       privatePath = "${userFlakePath}/private/${dir}";
       parentNames = lib.attrNames (
@@ -96,7 +96,7 @@ let
         ) raws
       );
     }
-    // lib.optionalAttrs (type == "node") {
+    // lib.optionalAttrs (type == "host") {
       createdByGroup = baseRaw.type == null;
     }
     // lib.optionalAttrs (type == "group") {
@@ -104,10 +104,10 @@ let
         lib'.concatMapListToAttrs (def: lib.removeAttrs def.value [ "common" ]) defs
       );
     }
-  ) expandedEntities;
-  expandedEntities = lib.zipAttrs (
+  ) expandedNodes;
+  expandedNodes = lib.zipAttrs (
     lib'.concatMapAttrsToList (
-      entityName: raws:
+      nodeName: raws:
       let
         inherit (lib.head raws) type;
       in
@@ -120,28 +120,28 @@ let
           lib.mapAttrsToList (childName: childRaw: {
             ${childName} = {
               type = null;
-              dir = "nodes/${entityName}/${childName}";
-              parentName = entityName;
+              dir = "nodes/${nodeName}/${childName}";
+              parentName = nodeName;
             };
           }) children
         ) raws
       )
-    ) slicedEntities
+    ) slicedNodes
     ++ lib'.concatMapAttrsToList (
-      entityName: raws:
+      nodeName: raws:
       map (raw: {
-        ${entityName} = raw;
+        ${nodeName} = raw;
       }) raws
-    ) slicedEntities
+    ) slicedNodes
   );
-  slicedEntities = lib.zipAttrsWith (
-    entityName: raws:
+  slicedNodes = lib.zipAttrsWith (
+    nodeName: raws:
     let
       first = lib.elemAt raws 0;
       second = lib.elemAt raws 1;
     in
     assert lib.assertMsg (lib.length raws == 2 -> first.type == second.type)
-      "${entityName} cannot simultaneously be a ${first.type} (${first.def.file}) and a ${second.type} (${second.def.file})";
+      "${nodeName} cannot simultaneously be a ${first.type} (${first.def.file}) and a ${second.type} (${second.def.file})";
     assert
       first.type == "group"
       -> lib.all (
@@ -150,7 +150,7 @@ let
         assert lib.all (
           name:
           assert lib.assertMsg (name != "current") "Node name \"current\" is reserved: ${raw.def.file}";
-          assert lib.assertMsg (name != entityName) "Group cannot contain itself: ${raw.def.file}";
+          assert lib.assertMsg (name != nodeName) "Group cannot contain itself: ${raw.def.file}";
           true
         ) (lib.attrNames raw.def.value);
         true
@@ -161,31 +161,31 @@ let
     dir:
     lib.optionals (lib.pathExists "${dir}/nodes") (
       lib'.concatMapAttrsToList (
-        entityName: type:
+        nodeName: type:
         let
-          nodeFile = "${dir}/nodes/${entityName}/node.nix";
-          nodeValue = import nodeFile;
-          groupFile = "${dir}/nodes/${entityName}/group.nix";
+          hostFile = "${dir}/nodes/${nodeName}/host.nix";
+          hostValue = import hostFile;
+          groupFile = "${dir}/nodes/${nodeName}/group.nix";
           groupValue = import groupFile;
           raws =
             assert lib.assertMsg (
-              lib.match "[^[:space:]._]+" entityName != null
-            ) "Node name cannot contain any space, . (dot) or _ (underscore): ${dir}/nodes/${entityName}";
+              lib.match "[^[:space:]._]+" nodeName != null
+            ) "Node name cannot contain any space, . (dot) or _ (underscore): ${dir}/nodes/${nodeName}";
             assert lib.assertMsg (
-              entityName != "current"
-            ) "Node name \"current\" is reserved: ${dir}/nodes/${entityName}";
-            lib.optional (lib.pathExists nodeFile) {
-              ${entityName} = {
-                type = "node";
+              nodeName != "current"
+            ) "Node name \"current\" is reserved: ${dir}/nodes/${nodeName}";
+            lib.optional (lib.pathExists hostFile) {
+              ${nodeName} = {
+                type = "host";
                 def = {
                   loc = [ ];
-                  file = nodeFile;
-                  value = nodeValue;
+                  file = hostFile;
+                  value = hostValue;
                 };
               };
             }
             ++ lib.optional (lib.pathExists groupFile) {
-              ${entityName} = {
+              ${nodeName} = {
                 type = "group";
                 def = {
                   loc = [ ];
@@ -196,41 +196,41 @@ let
             };
           n = lib.length raws;
         in
-        lib.optional (entityName != "common" && n != 0) (
+        lib.optional (nodeName != "common" && n != 0) (
           assert lib.assertMsg (
             n == 1
-          ) "${entityName} cannot simultaneously be a node (${nodeFile}) and a group (${groupFile})";
+          ) "${nodeName} cannot simultaneously be a host (${hostFile}) and a group (${groupFile})";
           lib.head raws
         )
       ) (builtins.readDir "${dir}/nodes")
     );
   recursiveFoldParentNames =
-    f: nul: entityNames:
+    f: nul: nodeNames:
     let
       fold =
-        nul: entityNames:
+        nul: nodeNames:
         builtins.foldl' (
-          acc: entityName:
+          acc: nodeName:
           let
-            inherit (linkedEntities.${entityName}) parentNames;
+            inherit (linkedNodes.${nodeName}) parentNames;
           in
-          fold (f acc parentNames entityName) parentNames
-        ) nul entityNames;
+          fold (f acc parentNames nodeName) parentNames
+        ) nul nodeNames;
     in
-    fold nul entityNames;
+    fold nul nodeNames;
   recursiveFoldChildNames =
-    f: nul: entityNames:
+    f: nul: nodeNames:
     let
       fold =
-        nul: entityNames:
+        nul: nodeNames:
         builtins.foldl' (
-          acc: entityName:
+          acc: nodeName:
           let
-            childNames = linkedEntities.${entityName}.childNames or [ ];
+            childNames = linkedNodes.${nodeName}.childNames or [ ];
           in
-          fold (f acc childNames entityName) childNames
-        ) nul entityNames;
+          fold (f acc childNames nodeName) childNames
+        ) nul nodeNames;
     in
-    fold nul entityNames;
+    fold nul nodeNames;
 in
-rawEntities
+rawNodes

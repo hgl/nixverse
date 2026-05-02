@@ -5,14 +5,14 @@
   ...
 }:
 let
-  rawEntities = import ../../lib/load/rawEntities.nix {
+  rawNodes = import ../../lib/load/rawNodes.nix {
     inherit lib lib';
     userFlakePath = userFlake.outPath;
   };
 in
 {
   crossRef = {
-    expr = rawEntities.crossRef0;
+    expr = rawNodes.crossRef0;
     expectedError = {
       type = "ThrownError";
       msg = "cyclic group containment: crossRef0 ⊇ crossRef1 ⊇ crossRef0";

@@ -10,11 +10,11 @@ let
     };
     flakePath = userFlake.outPath;
   };
-  inherit (outputs.nixverse) entities;
+  inherit (outputs.nixverse) nodes;
 in
 {
   node0 = {
-    expr = entities.node0.config.foo;
+    expr = nodes.node0.config.foo;
     expected = {
       common = 1;
       commonPriv = 1;
@@ -29,7 +29,7 @@ in
     };
   };
   groupNode0 = {
-    expr = entities.groupNode0.config.foo;
+    expr = nodes.groupNode0.config.foo;
     expected = {
       common = 1;
       commonPriv = 1;
@@ -44,14 +44,14 @@ in
     };
   };
   node0-home = {
-    expr = entities.node0.config.home-manager.users.bar.baz;
+    expr = nodes.node0.config.home-manager.users.bar.baz;
     expected = {
       group0 = 1;
       node0 = 1;
     };
   };
   groupNode0-home = {
-    expr = entities.groupNode0.config.home-manager.users.bar.baz;
+    expr = nodes.groupNode0.config.home-manager.users.bar.baz;
     expected = {
       group0 = 1;
       groupNode0 = 1;
