@@ -54,12 +54,13 @@ Let’s walk through some common tasks that Nixverse makes easier.
 
 A host is simply a single machine, defined by creating a `host.nix` file under a `nodes/<hostName>` directory. The `<hostName>` will serve as a handle to refer to the machine and the machine’s host name (which can be overridden in its configuration).
 
-Inside `host.nix`, specify the `os` (`nixos` or `darwin`) and the `channel` to use. The `os` decides determines whether the machine uses NixOS or [nix-darwin](https://github.com/nix-darwin/nix-darwin). The `channel` decides which flake inputs are made available to the host.
+Inside `host.nix`, specify the `os` (`nixos` or `darwin`), the `system` (e.g. `x86_64-linux` or `aarch64-darwin`), and the `channel` to use. The `os` value determines whether the machine uses NixOS or [nix-darwin](https://github.com/nix-darwin/nix-darwin). The `system` value sets `nixpkgs.hostPlatform` (and also provides some other convenience). The `channel` value decides which flake inputs are made available to the host.
 
 ```nix
 # nodes/hgl/host.nix
 {
   os = "nixos";
+  system = "x86_64-linux";
   channel = "unstable";
 }
 ```
@@ -71,8 +72,6 @@ Next, create the NixOS configuration file `configuration.nix` under the node's d
 ```nix
 # nodes/hgl/configuration.nix
 {
-  # You can auto-generate the system value with `nixos-generate-config`
-  nixpkgs.hostPlatform = "x86_64-linux";
   boot.loader.systemd-boot.enable = true;
   services.openssh.enable = true;
   # Add your own NixOS configuration
@@ -94,6 +93,7 @@ To define a group of machines, create a `group.nix` file under a `nodes/<groupNa
 {
   common = { lib, ... }: {
     os = lib.mkDefault "nixos";
+    system = lib.mkDefault "x86_64-linux";
     channel = lib.mkDefault "stable";
   };
   server1 = {};
@@ -101,7 +101,8 @@ To define a group of machines, create a `group.nix` file under a `nodes/<groupNa
     channel = "unstable"
   };
   mac = {
-    os = "darwin"
+    os = "darwin";
+    system = "aarch64-darwin";
   };
 }
 ```
@@ -132,7 +133,6 @@ We then define a common configuration for the three machine, and let `mac` overr
 ```nix
 # nodes/cluster/common/configuration.nix
 { pkgs, nodes, ...}: {
-  nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
   boot.loader.grub.enable = nodes.current.os != "darwin";
   services.openssh.enable = nodes.current.os != "darwin";
 
@@ -143,7 +143,6 @@ We then define a common configuration for the three machine, and let `mac` overr
 ```nix
 # nodes/cluster/mac/configuration.nix
 {
-  nixpkgs.hostPlatform = "aarch64-darwin";
 }
 ```
 
@@ -167,6 +166,7 @@ There is a problem though. In order to activate them like this, you need to copy
 {
   common = { lib, ... }: {
     os = lib.mkDefault "nixos";
+    system = lib.mkDefault "x86_64-linux";
     channel = lib.mkDefault "stable";
   };
   server1 = {
@@ -177,7 +177,8 @@ There is a problem though. In order to activate them like this, you need to copy
 +   deploy.targetHost = "10.0.0.2"
   };
   mac = {
-    os = "darwin"
+    os = "darwin";
+    system = "aarch64-darwin";
   };
 }
 ```
@@ -211,6 +212,7 @@ We first define the two groups:
 {
   common = {
     os = "nixos";
+    system = "x86_64-linux";
     channel = "unstable";
   };
   server1 = {};
@@ -228,6 +230,7 @@ We first define the two groups:
 {
   common = {
     os = "nixos";
+    system = "x86_64-linux";
     channel = "unstable";
   };
   router1 = {};

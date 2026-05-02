@@ -11,7 +11,7 @@
 }:
 let
   hostName = rawNode.name;
-  inherit (metaConfig) os channel;
+  inherit (metaConfig) os channel system;
   metaConfig =
     let
       inherit
@@ -44,8 +44,18 @@ let
           ) rawNode.defs;
         })
         config
+        options
         ;
     in
+    assert lib.assertMsg (
+      options.os.isDefined
+    ) "Missing required meta configuration `os` for host `${hostName}`";
+    assert lib.assertMsg (
+      options.channel.isDefined
+    ) "Missing required meta configuration `channel` for host `${hostName}`";
+    assert lib.assertMsg (
+      options.system.isDefined
+    ) "Missing required meta configuration `system` for host `${hostName}`";
     lib.asserts.checkAssertWarn config.assertions config.warnings (
       lib.removeAttrs config [
         "assertions"
@@ -62,6 +72,9 @@ let
               "nixosModules"
               "darwinModules"
             ]
+            // lib.optionalAttrs (userInput ? packages && lib.hasAttr system userInput.packages) {
+              packages = userInput.packages.${system};
+            }
             // {
               modules =
                 {
@@ -101,6 +114,11 @@ let
       _module.args = {
         pkgs' = getUserPkgs pkgs;
       };
+      # Not using lib.mkDefault because
+      # 1. it's explicitly set by user
+      # 2. hardware-configuration.nix already uses lib.mkDefault and can
+      #    conflict
+      nixpkgs.hostPlatform = system;
       networking.hostName = lib.mkDefault nodes.current.name;
       environment.systemPackages = [ pkgs.rsync ]; # for fs sync support
     };

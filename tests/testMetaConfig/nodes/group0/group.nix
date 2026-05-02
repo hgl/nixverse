@@ -7,6 +7,7 @@
       };
       config = {
         os = lib.mkDefault "nixos";
+        system = lib.mkDefault "x86_64-linux";
         channel = lib.mkDefault "unstable";
         foo = {
           group0 = 1;
@@ -15,6 +16,7 @@
     };
   groupNode0 = {
     os = "darwin";
+    system = "aarch64-darwin";
   };
   node0 = {
     foo = {

@@ -1,3 +1,8 @@
+{ lib, inputs', ... }:
 {
-  nixpkgs.hostPlatform = "x86_64-linux";
+  options.pkg = lib.mkOption {
+    type = lib.types.str;
+  };
+
+  config.pkg = inputs'.sample.packages.pkg;
 }

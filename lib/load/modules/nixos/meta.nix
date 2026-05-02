@@ -1,4 +1,8 @@
-{ lib, config, ... }:
+{
+  lib,
+  config,
+  ...
+}:
 let
   inherit (lib) mkOption types;
 in
@@ -12,6 +16,9 @@ in
     };
     channel = mkOption {
       type = types.addCheck types.nonEmptyStr (x: x != "any");
+    };
+    system = mkOption {
+      type = types.nonEmptyStr;
     };
     deploy = mkOption {
       type = types.submodule {

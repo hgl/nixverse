@@ -19,6 +19,7 @@ in
         type
         name
         os
+        system
         channel
         foo
         ;
@@ -30,6 +31,7 @@ in
       type = "host";
       name = "node0";
       os = "nixos";
+      system = "x86_64-linux";
       channel = "master";
       foo = {
         group0 = 1;
@@ -63,6 +65,7 @@ in
         type
         name
         os
+        system
         channel
         foo
         ;
@@ -74,6 +77,7 @@ in
       type = "host";
       name = "groupNode0";
       os = "darwin";
+      system = "aarch64-darwin";
       channel = "foo";
       foo = {
         group0 = 1;
@@ -86,7 +90,13 @@ in
     };
   };
   args = {
-    expr = nodes.args.deploy.targetHost;
-    expected = "1 baz 1 args x86_64-linux";
+    expr = {
+      inherit (nodes.args.deploy) targetHost;
+      pkg = nodes.args.config.pkg;
+    };
+    expected = {
+      targetHost = "1 baz 1 args x86_64-linux";
+      pkg = "x86_64-linux";
+    };
   };
 }
