@@ -12,13 +12,6 @@ let
   };
 in
 {
-  missing-os = {
-    expr = outputs.nixverse.nodes.missing-os;
-    expectedError = {
-      type = "ThrownError";
-      msg = "Missing required meta configuration `os` for host `missing-os`";
-    };
-  };
   missing-channel = {
     expr = outputs.nixverse.nodes.missing-channel;
     expectedError = {
@@ -31,6 +24,13 @@ in
     expectedError = {
       type = "ThrownError";
       msg = "Missing required meta configuration `system` for host `missing-system`";
+    };
+  };
+  unsupported-system = {
+    expr = outputs.nixverse.nodes.unsupported-system;
+    expectedError = {
+      type = "ThrownError";
+      msg = "Unsupported host system `x86_64-freebsd`";
     };
   };
 }

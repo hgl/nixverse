@@ -6,7 +6,6 @@
         type = lib.types.attrsOf lib.types.int;
       };
       config = {
-        os = lib.mkDefault "nixos";
         system = lib.mkDefault "x86_64-linux";
         channel = lib.mkDefault "unstable";
         foo = {
@@ -15,7 +14,6 @@
       };
     };
   groupNode0 = {
-    os = "darwin";
     system = "aarch64-darwin";
   };
   node0 = {

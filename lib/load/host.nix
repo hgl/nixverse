@@ -48,9 +48,6 @@ let
         ;
     in
     assert lib.assertMsg (
-      options.os.isDefined
-    ) "Missing required meta configuration `os` for host `${hostName}`";
-    assert lib.assertMsg (
       options.channel.isDefined
     ) "Missing required meta configuration `channel` for host `${hostName}`";
     assert lib.assertMsg (

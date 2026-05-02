@@ -11,7 +11,6 @@ let
   };
   group0 = { };
   common = {
-    os = "nixos";
     system = "x86_64-linux";
     channel = "unstable";
   };
@@ -57,7 +56,6 @@ in
             loc = [ ];
             file = "${userFlake}/nodes/node0/host.nix";
             value = {
-              os = "nixos";
               system = "x86_64-linux";
               channel = "unstable";
             };

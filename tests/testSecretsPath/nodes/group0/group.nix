@@ -1,6 +1,5 @@
 {
   groupNode0 = {
-    os = "nixos";
     system = "x86_64-linux";
     channel = "unstable";
   };

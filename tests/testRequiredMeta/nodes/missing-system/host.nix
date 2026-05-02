@@ -1,4 +1,3 @@
 {
-  os = "nixos";
   channel = "unstable";
 }

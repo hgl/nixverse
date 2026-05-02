@@ -5,6 +5,7 @@
 }:
 let
   inherit (lib) mkOption types;
+  systemSuffix = lib.last (lib.splitString "-" config.system);
 in
 {
   options = {
@@ -13,6 +14,13 @@ in
         "nixos"
         "darwin"
       ];
+      readOnly = true;
+      default =
+        {
+          darwin = "darwin";
+          linux = "nixos";
+        }
+        .${systemSuffix} or (throw "Unsupported host system `${config.system}`");
     };
     channel = mkOption {
       type = types.addCheck types.nonEmptyStr (x: x != "any");

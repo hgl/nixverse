@@ -54,12 +54,11 @@ Let’s walk through some common tasks that Nixverse makes easier.
 
 A host is simply a single machine, defined by creating a `host.nix` file under a `nodes/<hostName>` directory. The `<hostName>` will serve as a handle to refer to the machine and the machine’s host name (which can be overridden in its configuration).
 
-Inside `host.nix`, specify the `os` (`nixos` or `darwin`), the `system` (e.g. `x86_64-linux` or `aarch64-darwin`), and the `channel` to use. The `os` value determines whether the machine uses NixOS or [nix-darwin](https://github.com/nix-darwin/nix-darwin). The `system` value sets `nixpkgs.hostPlatform` (and also provides some other convenience). The `channel` value decides which flake inputs are made available to the host.
+Inside `host.nix`, specify the `system` (e.g. `x86_64-linux` or `aarch64-darwin`) and the `channel` to use. The `system` value sets `nixpkgs.hostPlatform`, and determines whether the machine uses NixOS or [nix-darwin](https://github.com/nix-darwin/nix-darwin). The `channel` value decides which flake inputs are made available to the host.
 
 ```nix
 # nodes/hgl/host.nix
 {
-  os = "nixos";
   system = "x86_64-linux";
   channel = "unstable";
 }
@@ -92,7 +91,6 @@ To define a group of machines, create a `group.nix` file under a `nodes/<groupNa
 # nodes/cluster/group.nix
 {
   common = { lib, ... }: {
-    os = lib.mkDefault "nixos";
     system = lib.mkDefault "x86_64-linux";
     channel = lib.mkDefault "stable";
   };
@@ -101,7 +99,6 @@ To define a group of machines, create a `group.nix` file under a `nodes/<groupNa
     channel = "unstable"
   };
   mac = {
-    os = "darwin";
     system = "aarch64-darwin";
   };
 }
@@ -126,7 +123,7 @@ Add the relevant flake inputs so nodes can use the nixpkgs channel they specify:
 }
 ```
 
-The `-stable-nixos` and `-stable-darwin` suffixes are required. `stable` matches the node's `channel`, and `nixos`/`darwin` match the node's `os` values. The OS suffix is necessary because the stable nixpkgs channels are OS-specific.
+The `-stable-nixos` and `-stable-darwin` suffixes are required. `stable` matches the host's `channel`, and `nixos`/`darwin` are inferred from the host's `system` value. The OS suffix is necessary because the stable nixpkgs channels are OS-specific.
 
 We then define a common configuration for the three machine, and let `mac` override some of it:
 
@@ -165,7 +162,6 @@ There is a problem though. In order to activate them like this, you need to copy
 # nodes/cluster/group.nix
 {
   common = { lib, ... }: {
-    os = lib.mkDefault "nixos";
     system = lib.mkDefault "x86_64-linux";
     channel = lib.mkDefault "stable";
   };
@@ -177,7 +173,6 @@ There is a problem though. In order to activate them like this, you need to copy
 +   deploy.targetHost = "10.0.0.2"
   };
   mac = {
-    os = "darwin";
     system = "aarch64-darwin";
   };
 }
@@ -211,7 +206,6 @@ We first define the two groups:
 # nodes/servers/group.nix
 {
   common = {
-    os = "nixos";
     system = "x86_64-linux";
     channel = "unstable";
   };
@@ -229,7 +223,6 @@ We first define the two groups:
 # nodes/routers/group.nix
 {
   common = {
-    os = "nixos";
     system = "x86_64-linux";
     channel = "unstable";
   };
