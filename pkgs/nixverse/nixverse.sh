@@ -59,12 +59,13 @@ EOF
 }
 cmd_node_install() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,lustrate' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,no-reboot,lustrate' -- "$@")
 	eval set -- "$args"
 	unset args
 
 	local parallel=$default_parallel
 	local lustrate=false
+	local reboot=true
 	while true; do
 		case $1 in
 		-p | --parallel)
@@ -74,6 +75,10 @@ cmd_node_install() {
 				return 1
 			fi
 			shift 2
+			;;
+		--no-reboot)
+			reboot=false
+			shift
 			;;
 		--lustrate)
 			lustrate=true
@@ -135,6 +140,7 @@ in
     getNodeInstallCommands {
       inherit nodeNames;
       userFlakeSourcePath = "$flake";
+	  reboot = $reboot;
       lustrate = $lustrate;
     }
   );

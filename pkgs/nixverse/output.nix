@@ -103,6 +103,7 @@
     {
       nodeNames,
       userFlakeSourcePath,
+      reboot,
       lustrate,
     }:
     map (
@@ -193,6 +194,7 @@
               nixos-anywhere --no-disko-deps \
                 ${flakeArg} ${sshOpts} \
                 --build-on ${if node.install.buildOnRemote then "remote" else "local"} \
+                --phases kexec,disko,install${lib.optionalString reboot ",reboot"} \
                 ${lib.optionalString (!node.install.useSubstitutes) "--no-substitute-on-destination"} \
                 --generate-hardware-config nixos-generate-config ${hwFileArg} \
                 "$@" ${targetHostArg}
