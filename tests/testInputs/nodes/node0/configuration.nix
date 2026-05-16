@@ -1,6 +1,7 @@
 {
   lib,
   inputs',
+  pkgs',
   ...
 }:
 {
@@ -28,6 +29,15 @@
   };
   options.hasExtraLegacyPkg = lib.mkOption {
     type = lib.types.bool;
+  };
+  options.inputPkgInPkgs = lib.mkOption {
+    type = lib.types.str;
+  };
+  options.publicOnlyPkgInPkgs = lib.mkOption {
+    type = lib.types.str;
+  };
+  options.extraPkgInPkgs = lib.mkOption {
+    type = lib.types.str;
   };
   options.inputModuleValue = lib.mkOption {
     type = lib.types.str;
@@ -59,5 +69,8 @@
   config.legacyPkg = inputs'.sample.legacyPackages.legacyPkg;
   config.hasPublicOnlyLegacyPkg = inputs'.sample.legacyPackages ? publicOnlyLegacyPkg;
   config.hasExtraLegacyPkg = inputs'.sample.legacyPackages ? extraLegacyPkg;
+  config.inputPkgInPkgs = pkgs'.pkg;
+  config.publicOnlyPkgInPkgs = pkgs'.publicOnlyPkg;
+  config.extraPkgInPkgs = pkgs'.extra;
   config.folderOnlyHasPkg = inputs'.folderOnly.packages ? pkg;
 }

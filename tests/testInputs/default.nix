@@ -21,6 +21,9 @@ in
         legacyPkg
         hasPublicOnlyLegacyPkg
         hasExtraLegacyPkg
+        inputPkgInPkgs
+        publicOnlyPkgInPkgs
+        extraPkgInPkgs
         inputModuleValue
         flakeOnlyModuleValue
         publicOnlyModuleValue
@@ -37,6 +40,9 @@ in
       legacyPkg = "legacy-pkg";
       hasPublicOnlyLegacyPkg = false;
       hasExtraLegacyPkg = false;
+      inputPkgInPkgs = "private-x86_64-linux";
+      publicOnlyPkgInPkgs = "public-only-x86_64-linux";
+      extraPkgInPkgs = "extra-x86_64-linux";
       inputModuleValue = "private-module";
       flakeOnlyModuleValue = "flake-only-module";
       publicOnlyModuleValue = "public-only-module";
