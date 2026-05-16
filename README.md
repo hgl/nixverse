@@ -546,6 +546,7 @@ your-flake/
 ├─ outputs/
 ├─ pkgs/
 ├─ modules/
+│  ├─ os/
 │  ├─ nixos/
 │  ├─ darwin/
 │  ├─ flake/
@@ -570,7 +571,7 @@ your-flake/
 - **lib**: custom lib functions
 - **outputs**: a [flake.parts module](https://github.com/hercules-ci/flake-parts), for specifying your flake outputs
 - **pkgs**: custom packages
-- **modules**: custom modules, each sub-directory corresponds to a specific type of modules
+- **modules**: custom modules, with `os` shared by NixOS and Darwin and other sub-directories corresponding to specific module types
 - **private**: git submodule for a private repo, for previously mentioned things you want to keep private
   - **secrets.yaml**: [sops](https://github.com/getsops/sops) secrets (using [sops-nix](https://github.com/Mic92/sops-nix))
 

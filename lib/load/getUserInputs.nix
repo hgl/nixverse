@@ -4,34 +4,36 @@
   self,
   inputs,
   userFlakePath,
+  getModules,
 }:
 {
   system,
   channel,
   os,
+  moduleType,
 }:
 let
   userFlakeInputs = lib.concatMapAttrs (
     name: rawInput:
     let
-      homeModules = rawInput.homeManagerModules or rawInput.homeModules or { };
+      rawInputModules = {
+        nixos = rawInput.nixosModules or { };
+        darwin = rawInput.darwinModules or { };
+        home = rawInput.homeManagerModules or rawInput.homeModules or { };
+        flake = rawInput.flakeModules or { };
+      };
       input =
         lib.removeAttrs rawInput [
           "homeManagerModules"
+          "homeModules"
           "nixosModules"
           "darwinModules"
+          "flakeModules"
         ]
         // {
           packages = rawInput.packages.${system} or { };
           legacyPackages = rawInput.legacyPackages.${system} or { };
-          inherit homeModules;
-          flakeModules = rawInput.flakeModules or { };
-          modules =
-            {
-              nixos = rawInput.nixosModules or { };
-              darwin = rawInput.darwinModules or { };
-            }
-            .${os};
+          modules = rawInputModules.${moduleType};
         };
     in
     if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
@@ -69,25 +71,17 @@ let
           );
         in
         pkgs';
-      getModules =
+      getInputModules =
         inputName: moduleType:
-        lib.mapAttrs
-          (name: paths: {
-            imports = paths;
-          })
-          (
-            lib'.allImportPathsInDirs [
-              "${userFlakePath}/private/inputs/${inputName}/modules/${moduleType}"
-              "${userFlakePath}/inputs/${inputName}/modules/${moduleType}"
-            ]
-          );
+        getModules [
+          "${userFlakePath}/private/inputs/${inputName}/modules"
+          "${userFlakePath}/inputs/${inputName}/modules"
+        ] moduleType;
     in
     lib.genAttrs inputNames (inputName: {
       packages = getPackages "packages" inputName;
       legacyPackages = getPackages "legacyPackages" inputName;
-      modules = getModules inputName os;
-      homeModules = getModules inputName "home";
-      flakeModules = getModules inputName "flake";
+      modules = getInputModules inputName moduleType;
     });
 in
 assert lib.assertMsg (userFlakeInputs ? nixpkgs)
@@ -103,11 +97,5 @@ lib.genAttrs (lib.unique (lib.attrNames userFlakeInputs ++ lib.attrNames userFol
       // (userFolderInputs.${inputName}.legacyPackages or { });
     modules =
       (userFlakeInputs.${inputName}.modules or { }) // (userFolderInputs.${inputName}.modules or { });
-    homeModules =
-      (userFlakeInputs.${inputName}.homeModules or { })
-      // (userFolderInputs.${inputName}.homeModules or { });
-    flakeModules =
-      (userFlakeInputs.${inputName}.flakeModules or { })
-      // (userFolderInputs.${inputName}.flakeModules or { });
   }
 )

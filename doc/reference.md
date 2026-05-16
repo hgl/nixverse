@@ -585,7 +585,7 @@ This exposes the foo and bar packages through the `packages` output, with their 
 
 ## Defining Custom Modules
 
-Custom modules, available to configuration files from the `modules'` argument, are defined in the `modules/<type>/<name>.nix` or `modules/<type>/<name>/default.nix` file, where `<type>` is one of `"nixos"`, `"darwin"`. They are made available to a node if the node's `os` meta configuration equals their `<type>`.
+Custom modules, available to configuration files from the `modules'` argument, are defined in the `modules/<type>/<name>.nix` or `modules/<type>/<name>/default.nix` file, where `<type>` is one of `"os"`, `"nixos"`, `"darwin"`. Modules under `modules/os` are made available to both NixOS and Darwin nodes. Modules under `modules/nixos` or `modules/darwin` are made available to a node if the node's `os` meta configuration equals their `<type>`, and override a `modules/os` module with the same name.
 
 Custom home manager modules, available to home configuration files (explained later) from the `modules'` argument, are defined in the `modules/home/<name>.nix` or `modules/home/<name>/default.nix` file.
 

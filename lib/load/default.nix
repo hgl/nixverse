@@ -52,6 +52,7 @@ let
       userFlakePath
       ;
   };
+  getModules = import ./getModules.nix { inherit lib lib'; };
   getUserInputs = import ./getUserInputs.nix {
     inherit
       lib
@@ -59,12 +60,12 @@ let
       self
       inputs
       userFlakePath
+      getModules
       ;
   };
-  userModules = import ./userModules.nix {
+  getUserModules = import ./getUserModules.nix {
     inherit
-      lib
-      lib'
+      getModules
       userFlakePath
       ;
   };
@@ -94,7 +95,7 @@ let
           userInputs
           userFlakePath
           userLib
-          userModules
+          getUserModules
           rawNode
           getUserPkgs
           getUserInputs
@@ -137,7 +138,7 @@ let
       userFlakePath
       userLib
       getUserPkgs
-      userModules
+      getUserModules
       nodes
       userNodes
       ;

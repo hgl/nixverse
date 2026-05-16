@@ -7,7 +7,7 @@
   userFlakePath,
   userLib,
   getUserPkgs,
-  userModules,
+  getUserModules,
   userNodes,
   nodes,
 }:
@@ -42,10 +42,10 @@ let
         };
         specialArgs = {
           nodes = userNodes;
-          nixosModules' = userModules.nixos;
-          darwinModules' = userModules.darwin;
-          homeModules' = userModules.home;
-          flakeModules' = userModules.flake;
+          nixosModules' = getUserModules "nixos";
+          darwinModules' = getUserModules "darwin";
+          homeModules' = getUserModules "home";
+          flakeModules' = getUserModules "flake";
         };
       }
       {

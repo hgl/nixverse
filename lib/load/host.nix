@@ -6,7 +6,7 @@
   userLib,
   getUserPkgs,
   getUserInputs,
-  userModules,
+  getUserModules,
   userNodes,
   rawNode,
 }:
@@ -64,6 +64,7 @@ let
       channel
       os
       ;
+    moduleType = os;
   };
   baseModule =
     {
@@ -87,8 +88,8 @@ let
   configuration = mkConfiguration {
     specialArgs = {
       lib' = userLib;
-      inputs' = lib.mapAttrs (name: input: lib.removeAttrs input [ "homeModules" ]) inputs';
-      modules' = userModules.${os};
+      inherit inputs';
+      modules' = getUserModules os;
       nodes = userNodes;
     }
     // lib.optionalAttrs (lib.pathExists "${userFlakePath}/private") {
@@ -133,14 +134,15 @@ let
             useUserPackages = lib.mkDefault true;
             extraSpecialArgs = {
               lib' = userLib;
-              inputs' = lib.mapAttrs (
-                name: input':
-                lib.removeAttrs input' [ "homeModules" ]
-                // {
-                  modules = input'.homeModules;
-                }
-              ) inputs';
-              modules' = userModules.home;
+              inputs' = getUserInputs {
+                inherit
+                  system
+                  channel
+                  os
+                  ;
+                moduleType = "home";
+              };
+              modules' = getUserModules "home";
               nodes = userNodes;
             };
             users = lib.mapAttrs (userName: paths: {

@@ -1,0 +1,3 @@
+{
+  folderOsModuleValue = "folder-os-module";
+}

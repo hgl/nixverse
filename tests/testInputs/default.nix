@@ -29,6 +29,8 @@ in
         privateModuleValue
         folderOnlyPkg
         folderOnlyModuleValue
+        folderOsModuleValue
+        folderOverrideModuleValue
         ;
     };
     expected = {
@@ -45,6 +47,8 @@ in
       privateModuleValue = "private-only-module";
       folderOnlyPkg = "folder-only-x86_64-linux";
       folderOnlyModuleValue = "folder-only-module";
+      folderOsModuleValue = "folder-os-module";
+      folderOverrideModuleValue = "folder-nixos-module";
     };
   };
 }
