@@ -59,18 +59,6 @@ let
       inputNames = (
         getInputNames "${userFlakePath}/private/inputs" ++ getInputNames "${userFlakePath}/inputs"
       );
-      getPackages =
-        subdir: inputName:
-        let
-          pkgs = userFlakeInputs.nixpkgs.legacyPackages;
-          pkgs' = lib.mapAttrs (name: paths: pkgs.callPackage (lib.head paths) { }) (
-            lib'.allImportPathsInDirs [
-              "${userFlakePath}/private/inputs/${inputName}/${subdir}"
-              "${userFlakePath}/inputs/${inputName}/${subdir}"
-            ]
-          );
-        in
-        pkgs';
       getInputModules =
         inputName: moduleType:
         getModules [
@@ -79,8 +67,6 @@ let
         ] moduleType;
     in
     lib.genAttrs inputNames (inputName: {
-      packages = getPackages "packages" inputName;
-      legacyPackages = getPackages "legacyPackages" inputName;
       modules = getInputModules inputName moduleType;
     });
 in
@@ -90,11 +76,8 @@ lib.genAttrs (lib.unique (lib.attrNames userFlakeInputs ++ lib.attrNames userFol
   inputName:
   userFlakeInputs.${inputName} or { }
   // {
-    packages =
-      (userFlakeInputs.${inputName}.packages or { }) // (userFolderInputs.${inputName}.packages or { });
-    legacyPackages =
-      (userFlakeInputs.${inputName}.legacyPackages or { })
-      // (userFolderInputs.${inputName}.legacyPackages or { });
+    packages = userFlakeInputs.${inputName}.packages or { };
+    legacyPackages = userFlakeInputs.${inputName}.legacyPackages or { };
     modules =
       (userFlakeInputs.${inputName}.modules or { }) // (userFolderInputs.${inputName}.modules or { });
   }

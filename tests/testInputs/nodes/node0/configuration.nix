@@ -23,17 +23,11 @@
   options.legacyPkg = lib.mkOption {
     type = lib.types.str;
   };
-  options.publicOnlyLegacyPkg = lib.mkOption {
-    type = lib.types.str;
+  options.hasPublicOnlyLegacyPkg = lib.mkOption {
+    type = lib.types.bool;
   };
-  options.extraLegacyPkg = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.publicOnlyPkg = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.extraPkg = lib.mkOption {
-    type = lib.types.str;
+  options.hasExtraLegacyPkg = lib.mkOption {
+    type = lib.types.bool;
   };
   options.inputModuleValue = lib.mkOption {
     type = lib.types.str;
@@ -47,8 +41,8 @@
   options.privateModuleValue = lib.mkOption {
     type = lib.types.str;
   };
-  options.folderOnlyPkg = lib.mkOption {
-    type = lib.types.str;
+  options.folderOnlyHasPkg = lib.mkOption {
+    type = lib.types.bool;
   };
   options.folderOnlyModuleValue = lib.mkOption {
     type = lib.types.str;
@@ -63,9 +57,7 @@
   config.pkg = inputs'.sample.packages.pkg;
   config.flakeOnlyPkg = inputs'.sample.packages.flakeOnlyPkg;
   config.legacyPkg = inputs'.sample.legacyPackages.legacyPkg;
-  config.publicOnlyLegacyPkg = inputs'.sample.legacyPackages.publicOnlyLegacyPkg;
-  config.extraLegacyPkg = inputs'.sample.legacyPackages.extraLegacyPkg;
-  config.publicOnlyPkg = inputs'.sample.packages.publicOnlyPkg;
-  config.extraPkg = inputs'.sample.packages.extra;
-  config.folderOnlyPkg = inputs'.folderOnly.packages.pkg;
+  config.hasPublicOnlyLegacyPkg = inputs'.sample.legacyPackages ? publicOnlyLegacyPkg;
+  config.hasExtraLegacyPkg = inputs'.sample.legacyPackages ? extraLegacyPkg;
+  config.folderOnlyHasPkg = inputs'.folderOnly.packages ? pkg;
 }

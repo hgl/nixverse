@@ -19,33 +19,29 @@ in
         pkg
         flakeOnlyPkg
         legacyPkg
-        publicOnlyLegacyPkg
-        extraLegacyPkg
-        publicOnlyPkg
-        extraPkg
+        hasPublicOnlyLegacyPkg
+        hasExtraLegacyPkg
         inputModuleValue
         flakeOnlyModuleValue
         publicOnlyModuleValue
         privateModuleValue
-        folderOnlyPkg
+        folderOnlyHasPkg
         folderOnlyModuleValue
         folderOsModuleValue
         folderOverrideModuleValue
         ;
     };
     expected = {
-      pkg = "private-x86_64-linux";
+      pkg = "flake-pkg";
       flakeOnlyPkg = "flake-only-pkg";
-      legacyPkg = "private-legacy-x86_64-linux";
-      publicOnlyLegacyPkg = "public-only-legacy-x86_64-linux";
-      extraLegacyPkg = "extra-legacy-x86_64-linux";
-      publicOnlyPkg = "public-only-x86_64-linux";
-      extraPkg = "extra-x86_64-linux";
+      legacyPkg = "legacy-pkg";
+      hasPublicOnlyLegacyPkg = false;
+      hasExtraLegacyPkg = false;
       inputModuleValue = "private-module";
       flakeOnlyModuleValue = "flake-only-module";
       publicOnlyModuleValue = "public-only-module";
       privateModuleValue = "private-only-module";
-      folderOnlyPkg = "folder-only-x86_64-linux";
+      folderOnlyHasPkg = false;
       folderOnlyModuleValue = "folder-only-module";
       folderOsModuleValue = "folder-os-module";
       folderOverrideModuleValue = "folder-nixos-module";
