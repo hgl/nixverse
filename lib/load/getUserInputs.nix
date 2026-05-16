@@ -16,12 +16,6 @@ let
   userFlakeInputs = lib.concatMapAttrs (
     name: rawInput:
     let
-      rawInputModules = {
-        nixos = rawInput.nixosModules or { };
-        darwin = rawInput.darwinModules or { };
-        home = rawInput.homeManagerModules or rawInput.homeModules or { };
-        flake = rawInput.flakeModules or { };
-      };
       input =
         lib.removeAttrs rawInput [
           "homeManagerModules"
@@ -33,7 +27,12 @@ let
         // {
           packages = rawInput.packages.${system} or { };
           legacyPackages = rawInput.legacyPackages.${system} or { };
-          modules = rawInputModules.${moduleType};
+          modules = {
+            nixos = rawInput.nixosModules or { };
+            darwin = rawInput.darwinModules or { };
+            home = rawInput.homeManagerModules or rawInput.homeModules or { };
+            flake = rawInput.flakeModules or { };
+          }.${moduleType};
         };
     in
     if channel != "unstable" && lib.hasSuffix "-unstable-${os}" name then
@@ -76,8 +75,6 @@ lib.genAttrs (lib.unique (lib.attrNames userFlakeInputs ++ lib.attrNames userFol
   inputName:
   userFlakeInputs.${inputName} or { }
   // {
-    packages = userFlakeInputs.${inputName}.packages or { };
-    legacyPackages = userFlakeInputs.${inputName}.legacyPackages or { };
     modules =
       (userFlakeInputs.${inputName}.modules or { }) // (userFolderInputs.${inputName}.modules or { });
   }

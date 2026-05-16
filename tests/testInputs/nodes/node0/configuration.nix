@@ -72,5 +72,5 @@
   config.inputPkgInPkgs = pkgs'.pkg;
   config.publicOnlyPkgInPkgs = pkgs'.publicOnlyPkg;
   config.extraPkgInPkgs = pkgs'.extra;
-  config.folderOnlyHasPkg = inputs'.folderOnly.packages ? pkg;
+  config.folderOnlyHasPkg = (inputs'.folderOnly.packages or { }) ? pkg;
 }
