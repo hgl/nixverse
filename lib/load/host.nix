@@ -230,6 +230,9 @@ lib.removeAttrs rawNode [
   parents = lib.genAttrs rawNode.parentNames (name: userNodes.${name});
   groups = lib.genAttrs rawNode.groupNames (name: userNodes.${name});
   inherit configuration diskConfigPaths sshHostKeyPath;
-  inherit (configuration) config;
+  inherit (configuration) config pkgs;
+  pkgs' = getUserPkgs configuration.pkgs;
+  lib = configuration.pkgs.lib;
+  lib' = userLib;
   dir = lib.removePrefix "${userFlakePath}/" rawNode.path;
 }

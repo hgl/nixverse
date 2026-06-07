@@ -6,9 +6,9 @@
   userFlake,
   userFlakePath,
   userLib,
-  getUserPkgs,
   getUserModules,
   userNodes,
+  userOutputsNodes,
   nodes,
 }:
 let
@@ -41,7 +41,7 @@ let
           self = userFlake;
         };
         specialArgs = {
-          nodes = userNodes;
+          nodes = userOutputsNodes;
           nixosModules' = getUserModules "nixos";
           darwinModules' = getUserModules "darwin";
           homeModules' = getUserModules "home";
@@ -53,20 +53,12 @@ let
           ./modules/flake/makefileInputs.nix
         ]
         ++ userFlakeModules;
-        _module.args = {
-          lib = userInputs.nixpkgs-unstable.lib;
-          lib' = userLib;
-        };
         perSystem =
           { config, system, ... }:
           let
             pkgs = userInputs.nixpkgs-unstable.legacyPackages.${system};
           in
           {
-            _module.args = {
-              inherit pkgs;
-              pkgs' = getUserPkgs pkgs;
-            };
             apps = {
               nixverse = {
                 type = "app";

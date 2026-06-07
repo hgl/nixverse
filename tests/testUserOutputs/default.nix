@@ -22,6 +22,10 @@ in
       legacyPackages = {
         x86_64-linux = {
           foo = true;
+          nodePkgs = true;
+          nodePkgs' = "foo-x86_64-linux";
+          nodeLib = true;
+          nodeLib' = true;
           bar = true;
         };
       }

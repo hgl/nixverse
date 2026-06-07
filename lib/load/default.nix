@@ -69,8 +69,8 @@ let
       userFlakePath
       ;
   };
-  userNodes = lib.mapAttrs (
-    nodeName: node:
+  userOutputsNodes = lib.mapAttrs (
+    _: node:
     {
       host = lib.removeAttrs node [
         "configuration"
@@ -85,6 +85,24 @@ let
     }
     .${node.type}
   ) nodes;
+  userNodes = lib.mapAttrs (
+    _: node:
+    {
+      host = lib.removeAttrs node [
+        "lib"
+        "lib'"
+        "pkgs"
+        "pkgs'"
+      ];
+      group = lib.removeAttrs node [
+        "lib"
+        "lib'"
+        "pkgs"
+        "pkgs'"
+      ];
+    }
+    .${node.type}
+  ) userOutputsNodes;
   nodes = lib.mapAttrs (
     nodeName: rawNode:
     {
@@ -137,10 +155,10 @@ let
       userFlake
       userFlakePath
       userLib
-      getUserPkgs
       getUserModules
       nodes
       userNodes
+      userOutputsNodes
       ;
   };
 in

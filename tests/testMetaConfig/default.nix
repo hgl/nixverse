@@ -93,10 +93,12 @@ in
     expr = {
       inherit (nodes.args.deploy) targetHost;
       pkg = nodes.args.config.pkg;
+      inherit (nodes.args.config) userNodePackages;
     };
     expected = {
       targetHost = "1 baz 1 args x86_64-linux";
       pkg = "x86_64-linux";
+      userNodePackages = "false false false false";
     };
   };
 }
