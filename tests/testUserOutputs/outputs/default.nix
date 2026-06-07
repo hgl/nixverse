@@ -14,10 +14,13 @@
   };
   systems = nodes.node0.lib.systems.flakeExposed;
   perSystem =
-    args:
-    assert !(args ? pkgs);
-    assert !(builtins.hasAttr "pkgs'" args);
     {
-      legacyPackages.bar = true;
+      pkgs,
+      pkgs',
+      ...
+    }:
+    {
+      legacyPackages.bar = pkgs ? gawk;
+      legacyPackages.perSystemPkgs' = pkgs'.foo;
     };
 }

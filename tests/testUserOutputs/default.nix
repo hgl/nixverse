@@ -27,6 +27,7 @@ in
           nodeLib = true;
           nodeLib' = true;
           bar = true;
+          perSystemPkgs' = "foo-x86_64-linux";
         };
       }
       // lib'.concatMapListToAttrs (
@@ -34,6 +35,7 @@ in
         lib.optionalAttrs (system != "x86_64-linux") {
           ${system} = {
             bar = true;
+            perSystemPkgs' = "foo-${system}";
           };
         }
       ) lib.systems.flakeExposed;

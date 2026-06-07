@@ -6,6 +6,7 @@
   userFlake,
   userFlakePath,
   userLib,
+  getUserPkgs,
   getUserModules,
   userNodes,
   userOutputsNodes,
@@ -59,6 +60,10 @@ let
             pkgs = userInputs.nixpkgs-unstable.legacyPackages.${system};
           in
           {
+            _module.args = {
+              inherit pkgs;
+              pkgs' = getUserPkgs pkgs;
+            };
             apps = {
               nixverse = {
                 type = "app";

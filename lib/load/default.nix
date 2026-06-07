@@ -155,6 +155,7 @@ let
       userFlake
       userFlakePath
       userLib
+      getUserPkgs
       getUserModules
       nodes
       userNodes
