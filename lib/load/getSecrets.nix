@@ -1,7 +1,7 @@
 {
   lib,
   lib',
-  userInputs,
+  inputs,
   userLib,
   userNodes,
   nodes,
@@ -9,9 +9,9 @@
 raw:
 let
   secretsAttrs = lib'.call raw {
-    lib = userInputs.nixpkgs-unstable.lib;
+    lib = inputs.nixpkgs-unstable.lib;
     lib' = userLib;
-    inputs = userInputs;
+    inherit inputs;
     nodes = userNodes;
     secrets = secretsAttrs;
   };

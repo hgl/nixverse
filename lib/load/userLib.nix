@@ -1,14 +1,14 @@
 {
   lib,
   lib',
-  userInputs,
+  inputs,
   userFlakePath,
 }:
 let
   userLibArgs = {
-    inherit (userInputs.nixpkgs-unstable) lib;
+    inherit (inputs.nixpkgs-unstable) lib;
     lib' = userLib;
-    inputs = userInputs;
+    inherit inputs;
   };
   userLib =
     builtins.foldl' (acc: path: lib.recursiveUpdate acc (lib'.call (import path) userLibArgs)) { }

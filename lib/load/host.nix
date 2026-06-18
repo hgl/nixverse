@@ -1,7 +1,6 @@
 {
   lib,
   lib',
-  userInputs,
   userFlakePath,
   userLib,
   getUserPkgs,
@@ -19,8 +18,7 @@ let
         (lib.evalModules {
           specialArgs = {
             lib' = userLib;
-            lib = userInputs.nixpkgs-unstable.lib;
-            inputs = userInputs;
+            inherit inputs';
             nodes = userNodes;
           };
           modules = [
@@ -37,9 +35,12 @@ let
                 }";
               }
               // lib'.call def.value {
-                inherit (args) lib lib';
-                inputs = userInputs;
-                nodes = userNodes;
+                inherit (args)
+                  lib
+                  lib'
+                  inputs'
+                  nodes
+                  ;
               }
             )
           ) rawNode.defs;

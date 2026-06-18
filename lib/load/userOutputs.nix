@@ -2,7 +2,7 @@
   lib,
   lib',
   self,
-  userInputs,
+  inputs,
   userFlake,
   userFlakePath,
   userLib,
@@ -38,7 +38,7 @@ let
     in
     flake-parts.lib.mkFlake
       {
-        inputs = userInputs // {
+        inputs = inputs // {
           self = userFlake;
         };
         specialArgs = {
@@ -57,7 +57,7 @@ let
         perSystem =
           { config, system, ... }:
           let
-            pkgs = userInputs.nixpkgs-unstable.legacyPackages.${system};
+            pkgs = inputs.nixpkgs-unstable.legacyPackages.${system};
           in
           {
             _module.args = {
@@ -104,7 +104,7 @@ assert lib.assertMsg (
       inherit
         lib
         lib'
-        userInputs
+        inputs
         userLib
         userNodes
         nodes
@@ -116,7 +116,7 @@ assert lib.assertMsg (
       lib
       lib'
       userLib
-      userInputs
+      inputs
       userFlakePath
       userNodes
       nodes

@@ -25,13 +25,13 @@
     {
       lib',
       lib,
-      inputs,
+      inputs',
       nodes,
       ...
     }:
     {
       deploy.targetHost = "${toString (lib ? concatLines)} ${lib'.bar} ${
-        toString (inputs ? nixpkgs-unstable)
+        toString (inputs' ? nixpkgs)
       } ${nodes.current.name} ${nodes.current.config.nixpkgs.hostPlatform.system}";
     };
 }

@@ -22,8 +22,8 @@ in
         lib
         lib'
         self
-        inputs
         ;
+      rawInputs = inputs;
       # This argument needs to be explicitly passed because of a nix limitation
       # https://github.com/hercules-ci/flake-parts/issues/148
       userFlakePath = flakePath;

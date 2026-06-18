@@ -2,7 +2,7 @@
   lib,
   lib',
   userLib,
-  userInputs,
+  inputs,
   userFlakePath,
   userNodes,
   nodes,

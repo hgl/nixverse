@@ -2,12 +2,12 @@
   lib,
   lib',
   self,
-  inputs,
+  rawInputs,
   userFlakePath,
 }:
 let
   userFlake =
-    inputs.self or (throw ''
+    rawInputs.self or (throw ''
       When loading nixverse, you must pass all the flake output arguments,
       and not just `self.inputs`.
 
@@ -24,7 +24,7 @@ let
       *DO NOT* pass `inherit (self) inputs`, but pass the output function
       arguments as `inputs` like above.
     '');
-  userInputs = lib.mapAttrs (
+  inputs = lib.mapAttrs (
     name: input:
     let
       homeModules = input.homeManagerModules or input.homeModules or null;
@@ -35,12 +35,12 @@ let
     // lib.optionalAttrs (homeModules != null) {
       inherit homeModules;
     }
-  ) (lib.removeAttrs inputs [ "self" ]);
+  ) (lib.removeAttrs rawInputs [ "self" ]);
   userLib = import ./userLib.nix {
     inherit
       lib
       lib'
-      userInputs
+      inputs
       userFlakePath
       ;
   };
@@ -114,7 +114,6 @@ let
         inherit
           lib
           lib'
-          userInputs
           userFlakePath
           userLib
           getUserModules
@@ -155,7 +154,7 @@ let
       lib
       lib'
       self
-      userInputs
+      inputs
       userFlake
       userFlakePath
       userLib
@@ -168,6 +167,6 @@ let
   };
 in
 assert lib.assertMsg (
-  userInputs ? nixpkgs-unstable
+  inputs ? nixpkgs-unstable
 ) "Missing the required flake input nixpkgs-unstable";
 userOutputs
