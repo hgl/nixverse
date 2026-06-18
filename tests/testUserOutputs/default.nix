@@ -27,9 +27,9 @@ in
         _: packages: lib.sort builtins.lessThan (map (package: package.pname or package.name) packages)
       ) outputs.devShellPackages;
       apps = lib.mapAttrs (_: apps: {
-        nixverse = apps.nixverse.type == "app";
-        default = apps.default.type == "app";
-        make = apps.make.type == "app";
+        nixverse = apps.nixverse.type == "app" && builtins.isString apps.nixverse.program;
+        default = apps.default.type == "app" && builtins.isString apps.default.program;
+        make = apps.make.type == "app" && builtins.isString apps.make.program;
       }) outputs.apps;
     };
     expected = {

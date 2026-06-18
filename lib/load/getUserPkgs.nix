@@ -2,11 +2,23 @@
   lib,
   lib',
   self,
+  getUserInputs,
   userFlakePath,
   userBundleNames,
 }:
+channel:
 pkgs:
 let
+  system = pkgs.stdenv.hostPlatform.system;
+  os = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "nixos";
+  inputs' = getUserInputs {
+    inherit
+      system
+      channel
+      os
+      ;
+    moduleType = os;
+  };
   rootPackagePaths = [
     "${userFlakePath}/private/pkgs"
     "${userFlakePath}/pkgs"
@@ -33,8 +45,8 @@ let
   rootPackageDir = getPackageDir (lib.head rootPackages'.${packageNameCollision});
   bundlePackageDir = getPackageDir (lib.head bundlePackages'.${packageNameCollision});
   callPackage = pkgs.newScope {
-    inherit pkgs' lib';
-    nixverse = self.packages.${pkgs.stdenv.hostPlatform.system}.nixverse;
+    inherit pkgs' lib' inputs';
+    nixverse = self.packages.${system}.nixverse;
   };
   pkgs' = lib.mapAttrs (name: paths: callPackage (lib.head paths) { }) (
     rootPackages' // bundlePackages'

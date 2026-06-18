@@ -118,7 +118,7 @@ let
       system:
       let
         pkgs = inputs.nixpkgs-unstable.legacyPackages.${system};
-        pkgs' = getUserPkgs pkgs;
+        pkgs' = getUserPkgs "unstable" pkgs;
       in
       lib.mapAttrs (outputName: paths: {
         ${system} = mergeOutputPathValues {
@@ -181,23 +181,21 @@ let
       pkgs = inputs.nixpkgs-unstable.legacyPackages.${system};
       nixverse = {
         type = "app";
-        program = self.packages.${system}.nixverse;
+        program = lib.getExe self.packages.${system}.nixverse;
       };
-      makefileInputsOutput = finalOutputs.makefileInputs or null;
+      makefileInputsOutput = finalOutputs.makefileInputs or { };
       makefileInputs =
         if lib.isAttrs makefileInputsOutput && builtins.hasAttr system makefileInputsOutput then
           makefileInputsOutput.${system}
         else
-          null;
+          [ ];
+      make = pkgs.callPackage (import ./packages/make.nix { inherit makefileInputs; }) { };
       nixverseApps = {
         inherit nixverse;
         default = nixverse;
-      }
-      // lib.optionalAttrs (makefileInputs != null) {
         make = {
           type = "app";
-          program =
-            pkgs.callPackage (import ./packages/make.nix { inherit makefileInputs; }) { };
+          program = lib.getExe make;
         };
       };
       userApps = userOutputs.apps.${system} or { };

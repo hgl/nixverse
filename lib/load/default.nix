@@ -51,19 +51,20 @@ let
       userFlakePath
       ;
   };
+  getUserInputs = import ./getUserInputs.nix {
+    inherit
+      lib
+      inputs
+      ;
+  };
   getUserPkgs = import ./getUserPkgs.nix {
     inherit
       lib
       lib'
       self
+      getUserInputs
       userFlakePath
       userBundleNames
-      ;
-  };
-  getUserInputs = import ./getUserInputs.nix {
-    inherit
-      lib
-      inputs
       ;
   };
   getUserModules = import ./getUserModules.nix {

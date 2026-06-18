@@ -76,7 +76,7 @@ let
     }:
     {
       _module.args = {
-        pkgs' = getUserPkgs pkgs;
+        pkgs' = getUserPkgs channel pkgs;
       };
       # Not using lib.mkDefault because
       # 1. it's explicitly set by user
@@ -232,7 +232,7 @@ lib.removeAttrs rawNode [
   groups = lib.genAttrs rawNode.groupNames (name: userNodes.${name});
   inherit configuration diskConfigPaths sshHostKeyPath;
   inherit (configuration) config pkgs;
-  pkgs' = getUserPkgs configuration.pkgs;
+  pkgs' = getUserPkgs channel configuration.pkgs;
   lib = configuration.pkgs.lib;
   lib' = userLib;
   dir = lib.removePrefix "${userFlakePath}/" rawNode.path;
