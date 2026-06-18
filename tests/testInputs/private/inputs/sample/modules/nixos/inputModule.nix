@@ -1,3 +1,0 @@
-{
-  inputModuleValue = "private-module";
-}

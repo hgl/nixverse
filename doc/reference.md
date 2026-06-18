@@ -527,6 +527,8 @@ Examples:
 
 Custom packages, available to configuration files from the `pkgs'` argument, are defined in the `pkgs/<name>.nix` or `pkgs/<name>/default.nix` file. Each file should be a function that returns a nix derivation.
 
+Packages can also be grouped in bundles at `bundles/<bundle>/pkgs/<name>.nix` or `bundles/<bundle>/pkgs/<name>/default.nix`. Bundle packages are exposed through the same `pkgs'` argument; the bundle name groups files on disk and does not add an attribute namespace.
+
 You can specify the dependent package names as the function's arguments, plus:
 
 - `pkgs-unstable`: exists only if the node accessing the `pkgs'` argument uses a channel not equal to `"unstable"` and a `nixpkgs-unstable` input exists. It provides unstable nixpkgs packages.
@@ -588,6 +590,8 @@ This exposes the foo and bar packages through the `packages` output, with their 
 Custom modules, available to configuration files from the `modules'` argument, are defined in the `modules/<type>/<name>.nix` or `modules/<type>/<name>/default.nix` file, where `<type>` is one of `"os"`, `"nixos"`, `"darwin"`. Modules under `modules/os` are made available to both NixOS and Darwin nodes. Modules under `modules/nixos` or `modules/darwin` are made available to a node if the node's `os` meta configuration equals their `<type>`, and override a `modules/os` module with the same name.
 
 Custom home manager modules, available to home configuration files (explained later) from the `modules'` argument, are defined in the `modules/home/<name>.nix` or `modules/home/<name>/default.nix` file.
+
+Modules can also be grouped in bundles at `bundles/<bundle>/modules/<type>/<name>.nix` or `bundles/<bundle>/modules/<type>/<name>/default.nix`. Bundle modules are exposed through the same `modules'` argument; the bundle name groups files on disk and does not add an attribute namespace.
 
 ```nix
 # modules/nixos/my-nixvim.nix
@@ -722,7 +726,7 @@ There are some configuration values that you probably don't want to expose to th
 
 Nixverse allows you to put all these private info in a private git repo, and then references it as a submodule at the `private` directory in the flake directory.
 
-The content of the submodule should replicate that of the outer flake directory thus allowing you to create private node/group configuration, packages, modules, `Makefile` etc. They will be deeply merged with the corresponding public ones with the privat ones overriding the public ones.
+The content of the submodule should replicate that of the outer flake directory thus allowing you to create private node/group configuration, packages, modules, bundles, `Makefile` etc. They will be deeply merged with the corresponding public ones with the private ones overriding the public ones.
 
 Notice you can still refer to a private node configuration value, package or module etc from the public configuration, and the value will be used at the runtime. It's just the value or the content will not be visible to people who only has access to your public flake repo.
 

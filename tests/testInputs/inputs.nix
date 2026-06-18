@@ -8,9 +8,6 @@
       legacyPkg = "legacy-pkg";
     };
     nixosModules = {
-      inputModule = {
-        inputModuleValue = "flake-module";
-      };
       flakeOnlyModule = {
         flakeOnlyModuleValue = "flake-only-module";
       };

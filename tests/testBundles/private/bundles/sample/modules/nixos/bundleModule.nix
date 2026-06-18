@@ -1,0 +1,3 @@
+{
+  bundleModuleValue = "private-module";
+}

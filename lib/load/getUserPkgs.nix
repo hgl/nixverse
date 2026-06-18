@@ -3,50 +3,43 @@
   lib',
   self,
   userFlakePath,
+  userBundleNames,
 }:
 pkgs:
 let
-  getInputNames =
-    dir:
-    lib.optionals (lib.pathExists dir) (
-      lib.attrNames (lib.filterAttrs (_: type: type == "directory") (builtins.readDir dir))
-    );
-  inputNames = lib.unique (
-    getInputNames "${userFlakePath}/private/inputs" ++ getInputNames "${userFlakePath}/inputs"
-  );
-  privateInputPackageDirs = map (
-    inputName: "${userFlakePath}/private/inputs/${inputName}/packages"
-  ) inputNames;
-  publicInputPackageDirs = map (
-    inputName: "${userFlakePath}/inputs/${inputName}/packages"
-  ) inputNames;
-  rootPackagePaths = lib'.allImportPathsInDirs [
+  rootPackagePaths = [
     "${userFlakePath}/private/pkgs"
     "${userFlakePath}/pkgs"
   ];
-  inputPackagePathsByInput = lib.genAttrs inputNames (
-    inputName:
-    lib'.allImportPathsInDirs [
-      "${userFlakePath}/private/inputs/${inputName}/packages"
-      "${userFlakePath}/inputs/${inputName}/packages"
-    ]
-  );
-  inputPackagePaths = lib'.allImportPathsInDirs (privateInputPackageDirs ++ publicInputPackageDirs);
-  rootInputPackageCollisions = lib.intersectLists (lib.attrNames rootPackagePaths) (
-    lib.attrNames inputPackagePaths
-  );
-  rootInputPackageCollision = lib.head rootInputPackageCollisions;
-  rootInputPackageCollisionInput = lib.findFirst (
-    inputName: lib.hasAttr rootInputPackageCollision inputPackagePathsByInput.${inputName}
-  ) null inputNames;
+  bundlePackagePaths =
+    (map (bundleName: "${userFlakePath}/private/bundles/${bundleName}/pkgs") userBundleNames)
+    ++ (map (bundleName: "${userFlakePath}/bundles/${bundleName}/pkgs") userBundleNames);
+  getPackagePaths = paths: lib'.allImportPathsInDirs paths;
+  getPackageDir =
+    packagePath:
+    let
+      packageName = lib.removeSuffix ".nix" (baseNameOf packagePath);
+      packageDir =
+        if lib.hasSuffix "/default.nix" packagePath then
+          lib.removeSuffix "/default.nix" packagePath
+        else
+          lib.removeSuffix "/${packageName}.nix" packagePath;
+    in
+    lib.removePrefix "${userFlakePath}/" packageDir;
+  rootPackages' = getPackagePaths rootPackagePaths;
+  bundlePackages' = getPackagePaths bundlePackagePaths;
+  packageNameCollisions = lib.intersectAttrs rootPackages' bundlePackages';
+  packageNameCollision = lib.head (lib.attrNames packageNameCollisions);
+  rootPackageDir = getPackageDir (lib.head rootPackages'.${packageNameCollision});
+  bundlePackageDir = getPackageDir (lib.head bundlePackages'.${packageNameCollision});
   callPackage = pkgs.newScope {
     inherit pkgs' lib';
     nixverse = self.packages.${pkgs.stdenv.hostPlatform.system}.nixverse;
   };
   pkgs' = lib.mapAttrs (name: paths: callPackage (lib.head paths) { }) (
-    rootPackagePaths // inputPackagePaths
+    rootPackages' // bundlePackages'
   );
 in
-assert lib.assertMsg (rootInputPackageCollisions == [ ])
-  "Package `${rootInputPackageCollision}` exists in both the root packages directory and input `${rootInputPackageCollisionInput}`'s packages directory";
+assert lib.assertMsg (packageNameCollisions == { })
+  "Package `${packageNameCollision}` exists in both `${rootPackageDir}` and `${bundlePackageDir}`";
 pkgs'

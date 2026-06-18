@@ -1,18 +1,11 @@
 {
   lib,
   inputs',
-  pkgs',
   ...
 }:
 {
   imports = [
-    inputs'.sample.modules.inputModule
     inputs'.sample.modules.flakeOnlyModule
-    inputs'.sample.modules.publicOnlyModule
-    inputs'.sample.modules.privateModule
-    inputs'.folderOnly.modules.folderOnlyModule
-    inputs'.folderOnly.modules.folderOsModule
-    inputs'.folderOnly.modules.folderOverrideModule
   ];
 
   options.pkg = lib.mkOption {
@@ -30,37 +23,7 @@
   options.hasExtraLegacyPkg = lib.mkOption {
     type = lib.types.bool;
   };
-  options.inputPkgInPkgs = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.publicOnlyPkgInPkgs = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.extraPkgInPkgs = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.inputModuleValue = lib.mkOption {
-    type = lib.types.str;
-  };
   options.flakeOnlyModuleValue = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.publicOnlyModuleValue = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.privateModuleValue = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.folderOnlyHasPkg = lib.mkOption {
-    type = lib.types.bool;
-  };
-  options.folderOnlyModuleValue = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.folderOsModuleValue = lib.mkOption {
-    type = lib.types.str;
-  };
-  options.folderOverrideModuleValue = lib.mkOption {
     type = lib.types.str;
   };
 
@@ -69,8 +32,4 @@
   config.legacyPkg = inputs'.sample.legacyPackages.legacyPkg;
   config.hasPublicOnlyLegacyPkg = inputs'.sample.legacyPackages ? publicOnlyLegacyPkg;
   config.hasExtraLegacyPkg = inputs'.sample.legacyPackages ? extraLegacyPkg;
-  config.inputPkgInPkgs = pkgs'.pkg;
-  config.publicOnlyPkgInPkgs = pkgs'.publicOnlyPkg;
-  config.extraPkgInPkgs = pkgs'.extra;
-  config.folderOnlyHasPkg = (inputs'.folderOnly.packages or { }) ? pkg;
 }

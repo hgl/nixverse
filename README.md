@@ -551,13 +551,18 @@ your-flake/
 │  ├─ darwin/
 │  ├─ flake/
 │  └─ home/
+├─ bundles/
+│  └─ your-bundle-name/
+│     ├─ pkgs/
+│     └─ modules/
 ├─ private/ (replicates the structure of your-flake/)
 │  ├─ secrets.yaml
 │  ├─ nodes/
 │  ├─ lib/
 │  ├─ outputs/
 │  ├─ pkgs/
-│  └─ modules/
+│  ├─ modules/
+│  └─ bundles/
 ├─ flake.nix
 └─ flake.lock
 ```
@@ -572,6 +577,7 @@ your-flake/
 - **outputs**: a [flake.parts module](https://github.com/hercules-ci/flake-parts), for specifying your flake outputs
 - **pkgs**: custom packages
 - **modules**: custom modules, with `os` shared by NixOS and Darwin and other sub-directories corresponding to specific module types
+- **bundles**: optional grouped custom packages and modules; each bundle can contain **pkgs** and/or **modules**, exposed through `pkgs'` and `modules'`
 - **private**: git submodule for a private repo, for previously mentioned things you want to keep private
   - **secrets.yaml**: [sops](https://github.com/getsops/sops) secrets (using [sops-nix](https://github.com/Mic92/sops-nix))
 

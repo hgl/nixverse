@@ -1,0 +1,4 @@
+{ modules', ... }:
+{
+  imports = [ modules'.collide ];
+}

@@ -1,10 +1,6 @@
 {
   lib,
-  lib',
-  self,
   inputs,
-  userFlakePath,
-  getModules,
 }:
 {
   system,
@@ -48,34 +44,7 @@ let
     else
       { ${name} = input; }
   ) (lib.removeAttrs inputs [ "self" ]);
-  userFolderInputs =
-    let
-      getInputNames =
-        dir:
-        lib.optionals (lib.pathExists dir) (
-          lib.attrNames (lib.filterAttrs (_: type: type == "directory") (builtins.readDir dir))
-        );
-      inputNames = (
-        getInputNames "${userFlakePath}/private/inputs" ++ getInputNames "${userFlakePath}/inputs"
-      );
-      getInputModules =
-        inputName: moduleType:
-        getModules [
-          "${userFlakePath}/private/inputs/${inputName}/modules"
-          "${userFlakePath}/inputs/${inputName}/modules"
-        ] moduleType;
-    in
-    lib.genAttrs inputNames (inputName: {
-      modules = getInputModules inputName moduleType;
-    });
 in
 assert lib.assertMsg (userFlakeInputs ? nixpkgs)
   "Missing the flake input nixpkgs-${channel}${lib.optionalString (channel != "unstable") "-${os}"}";
-lib.genAttrs (lib.unique (lib.attrNames userFlakeInputs ++ lib.attrNames userFolderInputs)) (
-  inputName:
-  userFlakeInputs.${inputName} or { }
-  // {
-    modules =
-      (userFlakeInputs.${inputName}.modules or { }) // (userFolderInputs.${inputName}.modules or { });
-  }
-)
+userFlakeInputs

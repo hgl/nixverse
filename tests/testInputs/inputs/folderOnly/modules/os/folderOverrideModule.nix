@@ -1,3 +1,0 @@
-{
-  folderOverrideModuleValue = "folder-os-module";
-}

@@ -44,29 +44,33 @@ let
       userFlakePath
       ;
   };
+  userBundleNames = import ./userBundleNames.nix {
+    inherit
+      lib
+      userFlakePath
+      ;
+  };
   getUserPkgs = import ./getUserPkgs.nix {
     inherit
       lib
       lib'
       self
       userFlakePath
+      userBundleNames
       ;
   };
-  getModules = import ./getModules.nix { inherit lib lib'; };
   getUserInputs = import ./getUserInputs.nix {
     inherit
       lib
-      lib'
-      self
       inputs
-      userFlakePath
-      getModules
       ;
   };
   getUserModules = import ./getUserModules.nix {
     inherit
-      getModules
+      lib
+      lib'
       userFlakePath
+      userBundleNames
       ;
   };
   userOutputsNodes = lib.mapAttrs (
