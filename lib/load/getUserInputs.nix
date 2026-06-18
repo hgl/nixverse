@@ -18,7 +18,6 @@ let
           "homeModules"
           "nixosModules"
           "darwinModules"
-          "flakeModules"
         ]
         // {
           packages = rawInput.packages.${system} or { };
@@ -27,7 +26,6 @@ let
             nixos = rawInput.nixosModules or { };
             darwin = rawInput.darwinModules or { };
             home = rawInput.homeManagerModules or rawInput.homeModules or { };
-            flake = rawInput.flakeModules or { };
           }.${moduleType};
         };
     in

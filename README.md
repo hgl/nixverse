@@ -544,12 +544,13 @@ your-flake/
 │  │     └─ users/
 ├─ lib/
 ├─ outputs/
+│  ├─ flake/
+│  └─ perSystem/
 ├─ pkgs/
 ├─ modules/
 │  ├─ os/
 │  ├─ nixos/
 │  ├─ darwin/
-│  ├─ flake/
 │  └─ home/
 ├─ bundles/
 │  └─ your-bundle-name/
@@ -560,6 +561,8 @@ your-flake/
 │  ├─ nodes/
 │  ├─ lib/
 │  ├─ outputs/
+│  │  ├─ flake/
+│  │  └─ perSystem/
 │  ├─ pkgs/
 │  ├─ modules/
 │  └─ bundles/
@@ -574,7 +577,7 @@ your-flake/
   - **configuration.nix**: NixOS or nix-darwin configuration
   - **home.nix**: [Home Manager](https://github.com/nix-community/home-manager) configuration
 - **lib**: custom lib functions
-- **outputs**: a [flake.parts module](https://github.com/hercules-ci/flake-parts), for specifying your flake outputs
+- **outputs**: custom flake outputs; files under `flake/` define top-level outputs, and files under `perSystem/` define system-indexed outputs for the systems passed to `nixverse.lib.load`
 - **pkgs**: custom packages
 - **modules**: custom modules, with `os` shared by NixOS and Darwin and other sub-directories corresponding to specific module types
 - **bundles**: optional grouped custom packages and modules; each bundle can contain **pkgs** and/or **modules**, exposed through `pkgs'` and `modules'`

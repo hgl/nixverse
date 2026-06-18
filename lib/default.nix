@@ -16,12 +16,14 @@ in
     {
       inputs,
       flakePath,
+      systems ? lib.systems.flakeExposed,
     }:
     import ./load {
       inherit
         lib
         lib'
         self
+        systems
         ;
       rawInputs = inputs;
       # This argument needs to be explicitly passed because of a nix limitation

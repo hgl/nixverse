@@ -4,6 +4,7 @@
   self,
   rawInputs,
   userFlakePath,
+  systems,
 }:
 let
   userFlake =
@@ -159,7 +160,7 @@ let
       userFlakePath
       userLib
       getUserPkgs
-      getUserModules
+      systems
       nodes
       userNodes
       userOutputsNodes
