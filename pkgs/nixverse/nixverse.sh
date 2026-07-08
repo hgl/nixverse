@@ -32,6 +32,7 @@ Manage nodes.
 Commands:
   install      install NixOS to nodes
   deploy       manage nodes
+  update-hw    update the hardware configurations of nodes
   eval         eval a nix expression against nodes
 
 Use "nixverse node <command> --help" for more information about a command.
@@ -437,7 +438,20 @@ EOF
 	parallel-run "$parallel" "$dir/cmds.json"
 }
 
-cmd_node_genhw() {
+cmd_help_node_update-hw() {
+	cat <<EOF
+Usage: nixverse node update-hw [<option>...] <node>...
+
+Update the hardware configuration for one or more nodes,
+by running nixos-generate-config on each node over SSH and writing the
+result to the node's hardware-configuration.nix.
+
+Options:
+  -p, --parallel <num>      number of nodes to update in parallel (default: 10)
+  -h, --help                show this help
+EOF
+}
+cmd_node_update-hw() {
 	local args
 	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:' -- "$@")
 	eval set -- "$args"
@@ -455,7 +469,7 @@ cmd_node_genhw() {
 			shift 2
 			;;
 		-h | --help)
-			cmd help node rsync
+			cmd help node update-hw
 			return
 			;;
 		--)
@@ -470,7 +484,7 @@ cmd_node_genhw() {
 	done
 
 	if [[ $# = 0 ]]; then
-		cmd help node rsync >&2
+		cmd help node update-hw >&2
 		return 1
 	fi
 
@@ -484,22 +498,23 @@ let
   inherit (flake.nixverse)
     lib
     getNodeNames
-    getNodeGenhwCommands
+    getNodeUpdateHwCommands
     ;
   inputNames = lib.splitString " " "$*";
   nodeNames = getNodeNames inputNames;
 in
 {
   "cmds.json" = builtins.toJSON (
-    getNodeGenhwCommands {
+    getNodeUpdateHwCommands {
       inherit nodeNames;
       userFlakeSourcePath = "$flake";
-      nixversePath = "@out@";
     }
   );
 }
 EOF
 	)
+	# shellcheck disable=SC2064
+	trap_add "rm -r '$dir'" EXIT
 
 	parallel-run "$parallel" "$dir/cmds.json"
 }

@@ -290,25 +290,38 @@
         );
       }
     ) nodeNames;
-  getNodeGenhwCommands =
+  getNodeUpdateHwCommands =
     {
       nodeNames,
       userFlakeSourcePath,
-      nixversePath,
     }:
     map (
       nodeName:
       let
         node = nodes.${nodeName};
+        sshOpts = lib.concatStringsSep " " (map (opt: "-o ${lib.escapeShellArg opt}") node.deploy.sshOpts);
+        hwFileArg = lib.escapeShellArg "${userFlakeSourcePath}/${node.dir}/hardware-configuration.nix";
+        noFilesystemsArg = lib.optionalString (node.diskConfigPaths != [ ]) " --no-filesystems";
       in
       assert lib.assertMsg (
+        node.os == "nixos"
+      ) "Updating hardware configuration is only supported for a NixOS node, which ${nodeName} is not";
+      assert lib.assertMsg (
         node.deploy.targetHost != null
-      ) "Missing meta configuration deploy.targetHost for node  ${nodeName}";
+      ) "Missing meta configuration deploy.targetHost for node ${nodeName}";
       {
         name = nodeName;
         command = ''
-          ssh ${lib.escapeShellArg node.deploy.targetHost} nixos-generate-config --show-hardware-config \
-            >${lib.escapeShellArg "${userFlakeSourcePath}/${node.dir}/hardware-configuration.nix"}
+          set -euo pipefail
+
+          hw=$(ssh ${sshOpts} ${lib.escapeShellArg node.deploy.targetHost} \
+            nixos-generate-config --show-hardware-config${noFilesystemsArg})
+          if [[ -e ${hwFileArg} ]]; then
+            printf '%s\n' "$hw" >${hwFileArg}
+          else
+            printf '%s\n' "$hw" >${hwFileArg}
+            git add --intent-to-add --force ${hwFileArg}
+          fi
         '';
       }
     ) nodeNames;

@@ -11,6 +11,14 @@ let
     flakePath = userFlake.outPath;
   };
   inherit (outputs.nixverse) nodes;
+  updateHwCommand =
+    nodeName:
+    (builtins.head (
+      outputs.nixverse.getNodeUpdateHwCommands {
+        nodeNames = [ nodeName ];
+        userFlakeSourcePath = userFlake.outPath;
+      }
+    )).command;
 in
 {
   node0 = {
@@ -100,5 +108,12 @@ in
       pkg = "x86_64-linux";
       userNodePackages = "false false false false";
     };
+  };
+  update-hw-disk-config = {
+    expr =
+      builtins.match ".*nixos-generate-config --show-hardware-config --no-filesystems.*" (
+        updateHwCommand "args"
+      ) != null;
+    expected = true;
   };
 }

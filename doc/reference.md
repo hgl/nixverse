@@ -314,7 +314,7 @@ In addition, it also has access to a `lib'` argument, which is explained in [Def
 
 A few files inside the node folder (e.g., `nodes/hgl`) will be imported automatically:
 
-- `hardware-configuration.nix`: generated automatically when running `nixverse node install`, or can be generated with `nixos-generate-config`.
+- `hardware-configuration.nix`: generated automatically when running `nixverse node install`, and can be updated later with `nixverse node update-hw`, or generated manually with `nixos-generate-config`.
 - `disk-config.nix`: refer to the section on [installing NixOS and nix-darwin](#install-nixos-and-nix-darwin).
 
 ## Defining Groups
