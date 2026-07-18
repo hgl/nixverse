@@ -54,15 +54,16 @@
         perSystem =
           {
             config,
-            inputs',
+            system,
             pkgs,
+            inputs',
             ...
           }:
           {
             packages = {
               nixverse = pkgs.callPackage ./pkgs/nixverse {
-                nixos-anywhere = inputs'.nixos-anywhere.packages.nixos-anywhere;
-                darwin-rebuild = inputs'.nix-darwin.packages.darwin-rebuild or null;
+                nixos-anywhere = if lib.hasSuffix "-darwin" system then null else inputs'.nixos-anywhere.packages.nixos-anywhere;
+                darwin-rebuild = if lib.hasSuffix "-darwin" system then inputs'.nix-darwin.packages.darwin-rebuild else null;
               };
               default = config.packages.nixverse;
             };
