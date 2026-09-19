@@ -105,6 +105,7 @@
       userFlakeSourcePath,
       reboot,
       lustrate,
+      generateHardwareConfig,
     }:
     map (
       nodeName:
@@ -115,6 +116,13 @@
         hwFileArg = lib.escapeShellArg "${userFlakeSourcePath}/${node.dir}/hardware-configuration.nix";
         flakeArg = "--flake ${lib.escapeShellArg "${userFlakeSourcePath}#${nodeName}"}";
         fsDirArg = lib.escapeShellArg "${userFlakeSourcePath}/build/nodes/${nodeName}/fs";
+        generateHwCommand = lib.optionalString generateHardwareConfig ''
+          if [[ ! -e ${hwFileArg} ]]; then
+            ssh ${targetHostArg} nixos-generate-config \
+              --show-hardware-config >${hwFileArg}
+            git add --intent-to-add --force ${hwFileArg}
+          fi
+        '';
       in
       assert lib.assertMsg (
         node.os != "darwin"
@@ -173,12 +181,7 @@
                 :
               fi | ssh ${targetHostArg} "$cmd"
 
-              if [[ ! -e ${hwFileArg} ]]; then
-                ssh ${targetHostArg} nixos-generate-config \
-                  --show-hardware-config >${hwFileArg}
-                git add --intent-to-add --force ${hwFileArg}
-              fi
-
+              ${generateHwCommand}
               NIX_SSHOPTS=${sshOpts} nixos-rebuild boot \
                 --install-bootloader --target-host ${targetHostArg} ${flakeArg} \
                 ${lib.optionalString node.install.useSubstitutes "--use-substitutes"} \
@@ -194,9 +197,9 @@
               nixos-anywhere --no-disko-deps \
                 ${flakeArg} ${sshOpts} \
                 --build-on ${if node.install.buildOnRemote then "remote" else "local"} \
-                --phases kexec,disko,install${lib.optionalString reboot ",reboot"} \
+                --phases disko,install${lib.optionalString reboot ",reboot"} \
                 ${lib.optionalString (!node.install.useSubstitutes) "--no-substitute-on-destination"} \
-                --generate-hardware-config nixos-generate-config ${hwFileArg} \
+                ${lib.optionalString generateHardwareConfig "--generate-hardware-config nixos-generate-config ${hwFileArg}"} \
                 "$@" ${targetHostArg}
             '';
       }

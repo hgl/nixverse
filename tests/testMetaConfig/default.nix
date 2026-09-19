@@ -19,6 +19,20 @@ let
         userFlakeSourcePath = userFlake.outPath;
       }
     )).command;
+  installCommand =
+    nodeName: args:
+    (builtins.head (
+      outputs.nixverse.getNodeInstallCommands (
+        {
+          nodeNames = [ nodeName ];
+          userFlakeSourcePath = userFlake.outPath;
+          reboot = true;
+          lustrate = false;
+          generateHardwareConfig = true;
+        }
+        // args
+      )
+    )).command;
 in
 {
   node0 = {
@@ -115,5 +129,33 @@ in
         updateHwCommand "args"
       ) != null;
     expected = true;
+  };
+  install-generate-hw-config = {
+    expr =
+      builtins.match ".*--generate-hardware-config nixos-generate-config .*" (installCommand "args" { })
+      != null;
+    expected = true;
+  };
+  install-no-generate-hw-config = {
+    expr =
+      builtins.match ".*generate-hardware-config.*" (
+        installCommand "args" { generateHardwareConfig = false; }
+      ) != null;
+    expected = false;
+  };
+  install-lustrate-generate-hw-config = {
+    expr =
+      builtins.match ".*nixos-generate-config.*" (installCommand "args" { lustrate = true; }) != null;
+    expected = true;
+  };
+  install-lustrate-no-generate-hw-config = {
+    expr =
+      builtins.match ".*nixos-generate-config.*" (
+        installCommand "args" {
+          lustrate = true;
+          generateHardwareConfig = false;
+        }
+      ) != null;
+    expected = false;
   };
 }

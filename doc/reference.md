@@ -314,7 +314,7 @@ In addition, it also has access to a `lib'` argument, which is explained in [Def
 
 A few files inside the node folder (e.g., `nodes/hgl`) will be imported automatically:
 
-- `hardware-configuration.nix`: generated automatically when running `nixverse node install`, and can be updated later with `nixverse node update-hw`, or generated manually with `nixos-generate-config`.
+- `hardware-configuration.nix`: generated automatically when running `nixverse node install` (unless `--no-generate-hardware-config` is passed), and can be updated later with `nixverse node update-hw`, or generated manually with `nixos-generate-config`.
 - `disk-config.nix`: refer to the section on [installing NixOS and nix-darwin](#install-nixos-and-nix-darwin).
 
 ## Defining Groups
@@ -765,5 +765,7 @@ The Nixverse CLI allows NixOS to be installed declaratively to a remote machine.
 1. Boot the NixOS ISO image on the remote machine and make it accessible with SSH.
 1. Specify the [`install` meta configuration](#special-node-meta-configuration-values) for your node. Set its SSH address to `install.targetHost` (or `deploy.targetHost`).
 1. Run `nixverse nodes install <name>...`. If ` <name>...` contains more than one node, all of them will be installed in parallel. (This command simply invokes [nixos-anywhere](https://github.com/nix-community/nixos-anywhere)).
+
+A node's `hardware-configuration.nix` is generated during installation. Pass `--no-generate-hardware-config` to skip it, which is useful when the node's hardware is already fully described by its configuration files.
 
 For a Darwin node, running `nixverse nodes deploy` installs `nix-darwin` automatically. Make sure Nix itself is installed first and the meta configuration `deploy.local` is set to `true`.

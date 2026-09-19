@@ -55,18 +55,21 @@ Install one or more nodes.
 Options:
   -p, --parallel <num>      number of nodes to install in parallel (default: 10)
   --lustrate                install using lustrate
+  --no-generate-hardware-config
+                            do not generate the nodes' hardware-configuration.nix
   -h, --help                show this help
 EOF
 }
 cmd_node_install() {
 	local args
-	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,no-reboot,lustrate' -- "$@")
+	args=$(getopt -n nixverse -o 'hp:' --long 'help,parallel:,no-reboot,lustrate,no-generate-hardware-config' -- "$@")
 	eval set -- "$args"
 	unset args
 
 	local parallel=$default_parallel
 	local lustrate=false
 	local reboot=true
+	local generate_hardware_config=true
 	while true; do
 		case $1 in
 		-p | --parallel)
@@ -83,6 +86,10 @@ cmd_node_install() {
 			;;
 		--lustrate)
 			lustrate=true
+			shift
+			;;
+		--no-generate-hardware-config)
+			generate_hardware_config=false
 			shift
 			;;
 		-h | --help)
@@ -143,6 +150,7 @@ in
       userFlakeSourcePath = "$flake";
 	  reboot = $reboot;
       lustrate = $lustrate;
+      generateHardwareConfig = $generate_hardware_config;
     }
   );
 }
